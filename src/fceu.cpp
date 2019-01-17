@@ -416,9 +416,7 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 
 	if (!fp)
 	{
-		extern bool archiveManuallyCanceled;
-		// Although !fp, if the operation was canceled from archive select dialog box, don't show the error message;
-		if (!silent && !archiveManuallyCanceled)
+		if (!silent)
 			FCEU_PrintError("´ò¿ª \"%s\" ´íÎó£¡", name);
 		return 0;
 	}
