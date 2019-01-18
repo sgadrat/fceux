@@ -33,3 +33,4 @@ fceux-net-server
 .sconsign.dblite
 .deps
 .dirstamp
+config.log
