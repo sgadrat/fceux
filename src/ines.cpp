@@ -723,6 +723,8 @@ static BMAPPINGLocal bmap[] = {
 	{"HP10xx/H20xx Boards",	260, BMCHPxx_Init},
 	{"810544-CA-1",		    261, BMC810544CA1_Init},
 
+	{"UNICORN",            3840, UNICORN_Init},
+
 	{"",					0, NULL}
 };
 
