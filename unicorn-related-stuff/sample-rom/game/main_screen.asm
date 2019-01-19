@@ -24,9 +24,6 @@ main_screen_init:
 		sta tmpfield2
 		jsr draw_zipped_nametable
 
-		; Show ESP states
-		jsr main_show_connection_state
-
 		rts
 	.)
 
@@ -52,8 +49,16 @@ nametable_attributes:
 
 main_screen_tick:
 .(
+	; Reset drawn nametable buffers
+	jsr reset_nt_buffers
+
+	; Show data received from server
 	jsr main_receive_msg
 
+	; Show ESP states
+	jsr main_show_connection_state
+
+	; When player presses a button, send a message to the server
 	lda controller_a_last_frame_btns
 	bne end
 
@@ -147,7 +152,9 @@ main_show_connection_state:
 	lda $5000        ; Fetch ESP response
 	sta server_state ;
 
-	; Draw wifi state
+	; Construct command to show wifi state on screen
+	;  Continuation | PPU Address | Size | Data    | Next continuation
+	;  $01          | $2068       | $01  | <state> | $00
 	jsr last_nt_buffer
 	lda #1
 	sta nametable_buffers, x
@@ -164,7 +171,7 @@ main_show_connection_state:
 	lda #0
 	sta nametable_buffers+5, x
 
-	; Draw server state
+	; Construct command to show server state
 	jsr last_nt_buffer
 	lda #1
 	sta nametable_buffers, x
@@ -193,8 +200,8 @@ main_receive_msg:
 	bpl end
 
 		; Prepare the nametable buffer be drawn on screen
-		;  Continuation | PPU Address | Size | Data | Next continuation
-		;  $00          | $2204       | nb bytes read from esp | bytes from esp | $00
+		;  Continuation | PPU Address | Size                   | Data           | Next continuation
+		;  $01          | $2204       | nb bytes read from esp | bytes from esp | $00
 		jsr last_nt_buffer
 		lda #1
 		sta nametable_buffers, x
