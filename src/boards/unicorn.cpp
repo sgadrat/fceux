@@ -56,6 +56,19 @@ public:
 	uint8 tx() override;
 
 private:
+	enum class message_id_t : uint8 {
+		MSG_NULL = 0x00,
+		MSG_GET_WIFI_STATUS = 0x01,
+		MSG_GET_SERVER_STATUS = 0x02,
+		MSG_SEND_MESSAGE = 0x03,
+	};
+
+	void processBufferedMessage();
+
+	template<class I>
+	void sendMessageToServer(I begin, I end);
+
+private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
 };
@@ -71,14 +84,93 @@ GlutockFirmware::~GlutockFirmware() {
 }
 
 void GlutockFirmware::rx(uint8 v) {
-	//TODO store byte in buffer, try to parse message from buffer, process parsed message
 	FCEU_printf("UNICORN GlutockFirmware rx %02x\n", v);
+
+	this->rx_buffer.push_back(v);
+	this->processBufferedMessage();
 }
 
 uint8 GlutockFirmware::tx() {
-	//TODO refresh buffer from network and get byte from buffer
 	FCEU_printf("UNICORN GlutockFirmware tx\n");
-	return 0;
+
+	//TODO Refresh buffer from network
+
+	// Get byte from buffer
+	uint8 result;
+	if (this->tx_buffer.empty()) {
+		result = 0;
+	}else {
+		result = this->tx_buffer.front();
+		this->tx_buffer.pop_front();
+	}
+
+	FCEU_printf("UNICORN GlutockFirmware tx <= %02x\n", result);
+	return result;
+}
+
+void GlutockFirmware::processBufferedMessage() {
+	/* This function process all messages from the RX buffer until
+	 * the buffer is empty or one message is icomplete.
+	 */
+
+	bool stop = false; // The processing of a message can set this flag to indicate that the message is incomplete, so processing has to stop
+	while (!this->rx_buffer.empty() && !stop) {
+		std::deque<uint8>::size_type message_size = 0; // The processing of a message must set this value to the entire message size, to be able to remove it from buffer
+		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
+			case message_id_t::MSG_NULL:
+				FCEU_printf("UNICORN GlutockFirmware received message NULL\n");
+				message_size = 1;
+				break;
+			case message_id_t::MSG_GET_WIFI_STATUS:
+				FCEU_printf("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
+				message_size = 1;
+				break;
+			case message_id_t::MSG_GET_SERVER_STATUS:
+				FCEU_printf("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				this->tx_buffer.push_back(0); // Simple answer, server is not connected
+				message_size = 1;
+				break;
+			case message_id_t::MSG_SEND_MESSAGE: {
+				if (this->rx_buffer.size() < 2) {
+					stop = true;
+					return;
+				}
+				uint8 const payload_size = this->rx_buffer[1];
+				if (this->rx_buffer.size() < payload_size + 2) {
+					stop = true;
+					return;
+				}
+				FCEU_printf("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
+				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
+				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
+				this->sendMessageToServer(payload_begin, payload_end);
+				message_size = payload_size + 2;
+				break;
+			}
+			default:
+				FCEU_printf("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
+				message_size = 1;
+				break;
+		};
+
+		// Remove processed message
+		assert(stop || message_size != 0); // message size of zero removes no bytes from buffer, if stop is not set it will trigger an infinite loop
+		if (message_size != 0) {
+			assert(message_size <= this->rx_buffer.size()); // cannot remove more bytes than what is in the buffer
+			this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
+		}
+	}
+}
+
+template<class I>
+void GlutockFirmware::sendMessageToServer(I begin, I end) {
+	//TODO actually send data over the network
+	FCEU_printf("message to send: ");
+	for (I cur = begin; cur < end; ++cur) {
+		FCEU_printf("%02x ", *cur);
+	}
+	FCEU_printf("\n");
 }
 
 static uint8 *WRAM = NULL;

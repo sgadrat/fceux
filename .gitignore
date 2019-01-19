@@ -34,3 +34,6 @@ fceux-net-server
 .deps
 .dirstamp
 config.log
+
+# unicorn specific
+unicorn-related-stuff/sample-rom/*.nes
