@@ -1,11 +1,38 @@
 #include "mapinc.h"
 #include "../ines.h"
 
+class EspFirmware {
+public:
+	EspFirmware();
+	~EspFirmware();
+	void tx(uint8 v);
+	uint8 rx();
+};
+
+EspFirmware::EspFirmware() {
+	//TODO setup network
+}
+
+EspFirmware::~EspFirmware() {
+	//TODO clean network structures
+}
+
+void EspFirmware::tx(uint8 v) {
+	//TODO interpret message
+	FCEU_printf("EspFirmware TX %02x\n", v);
+}
+
+uint8 EspFirmware::rx() {
+	//TODO figure what to do
+	FCEU_printf("EspFirmware RX\n");
+}
+
 static uint8 latche, latcheinit, bus_conflict;
 static uint16 addrreg0, addrreg1;
 static uint8 *WRAM = NULL;
 static uint32 WRAMSIZE;
 static void (*WSync)(void);
+static EspFirmware *esp = NULL;
 
 static void LatchClose(void) {
 	FCEU_printf("UNICORN latch close\n");
@@ -16,11 +43,12 @@ static void LatchClose(void) {
 
 static DECLFW(UNICORNWrite) {
 	FCEU_printf("UNICORN write %04x %02x\n", A, V);
+	esp->tx(V);
 }
 
 static DECLFR(UNICORNRead) {
 	FCEU_printf("UNICORN read %04x\n", A);
-	return 0;
+	return esp->rx();
 }
 
 static void UNICORNPower(void) {
