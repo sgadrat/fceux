@@ -121,12 +121,24 @@ main_show_connection_state:
 	lda #MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
 	sta $5000                ;
 
+	.(               ;
+		wait_esp:    ;
+		bit $5001    ; Wait for ESP answer
+		bpl wait_esp ;
+	.)               ;
+
 	lda $5000      ; Fetch ESP response
 	sta wifi_state ;
 
 	; Fetch server state
 	lda #MSG_GET_SERVER_STATUS ; Send server status request to ESP
 	sta $5000                  ;
+
+	.(               ;
+		wait_esp:    ;
+		bit $5001    ; Wait for ESP answer
+		bpl wait_esp ;
+	.)               ;
 
 	lda $5000        ; Fetch ESP response
 	sta server_state ;

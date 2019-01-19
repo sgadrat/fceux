@@ -63,7 +63,7 @@ private:
 		MSG_SEND_MESSAGE = 0x03,
 	};
 
-	void processBufferedMessage();
+	void processBufferedMessages();
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
@@ -87,7 +87,8 @@ void GlutockFirmware::rx(uint8 v) {
 	FCEU_printf("UNICORN GlutockFirmware rx %02x\n", v);
 
 	this->rx_buffer.push_back(v);
-	this->processBufferedMessage();
+	this->processBufferedMessages();
+	this->setGpio0(!this->tx_buffer.empty());
 }
 
 uint8 GlutockFirmware::tx() {
@@ -104,11 +105,14 @@ uint8 GlutockFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
+	// Update gpio
+	this->setGpio0(!this->tx_buffer.empty());
+
 	FCEU_printf("UNICORN GlutockFirmware tx <= %02x\n", result);
 	return result;
 }
 
-void GlutockFirmware::processBufferedMessage() {
+void GlutockFirmware::processBufferedMessages() {
 	/* This function process all messages from the RX buffer until
 	 * the buffer is empty or one message is icomplete.
 	 */
@@ -196,6 +200,11 @@ static DECLFR(UNICORNRead) {
 	return esp->tx();
 }
 
+static DECLFR(UNICORNReadFlags) {
+	FCEU_printf("UNICORN read flags %04x\n", A);
+	return esp->getGpio0() ? 0x80 : 0x00;
+}
+
 static void UNICORNPower(void) {
 	FCEU_printf("UNICORN power\n");
 	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
@@ -211,6 +220,7 @@ static void UNICORNPower(void) {
 
 	SetWriteHandler(0x5000, 0x5000, UNICORNWrite);
 	SetReadHandler(0x5000, 0x5000, UNICORNRead);
+	SetReadHandler(0x5001, 0x5001, UNICORNReadFlags);
 
 	esp = new GlutockFirmware;
 }
