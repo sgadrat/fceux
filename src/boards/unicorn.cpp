@@ -13,6 +13,14 @@
 #include <deque>
 #include <sstream>
 
+#undef UNICORN_DEBUG
+
+#ifdef UNICORN_DEBUG
+#define UDBG(...) FCEU_printf(__VA_ARGS__)
+#else
+#define UDBG(...)
+#endif
+
 class EspFirmware {
 public:
 	virtual ~EspFirmware() = default;
@@ -63,7 +71,7 @@ private:
 };
 
 GlutockFirmware::GlutockFirmware() {
-	FCEU_printf("UNICORN GlutockFirmware ctor\n");
+	UDBG("UNICORN GlutockFirmware ctor\n");
 
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
@@ -82,7 +90,7 @@ GlutockFirmware::GlutockFirmware() {
 	port_str << port;
 	s = getaddrinfo(host, port_str.str().c_str(), &hints, &result);
 	if (s != 0) {
-		FCEU_printf("UNICORN unable to resolve address\n");
+		UDBG("UNICORN unable to resolve address\n");
 		return;
 	}
 
@@ -102,7 +110,7 @@ GlutockFirmware::GlutockFirmware() {
 	}
 	freeaddrinfo(result);
 	if (rp == NULL) {
-		FCEU_printf("UNICORN failed to connect to server\n");
+		UDBG("UNICORN failed to connect to server\n");
 		return;
 	}
 
@@ -123,7 +131,7 @@ GlutockFirmware::GlutockFirmware() {
 	}
 #endif
 	if (!success) {
-		FCEU_printf("UNICORN failed to set socket in non-blocking mode");
+		UDBG("UNICORN failed to set socket in non-blocking mode");
 		close(sfd);
 		return;
 	}
@@ -133,7 +141,7 @@ GlutockFirmware::GlutockFirmware() {
 }
 
 GlutockFirmware::~GlutockFirmware() {
-	FCEU_printf("UNICORN GlutockFirmware dtor\n");
+	UDBG("UNICORN GlutockFirmware dtor\n");
 	if (this->socket != -1) {
 		::close(this->socket);
 		this->socket = -1;
@@ -141,14 +149,14 @@ GlutockFirmware::~GlutockFirmware() {
 }
 
 void GlutockFirmware::rx(uint8 v) {
-	FCEU_printf("UNICORN GlutockFirmware rx %02x\n", v);
+	UDBG("UNICORN GlutockFirmware rx %02x\n", v);
 
 	this->rx_buffer.push_back(v);
 	this->processBufferedMessages();
 }
 
 uint8 GlutockFirmware::tx() {
-	FCEU_printf("UNICORN GlutockFirmware tx\n");
+	UDBG("UNICORN GlutockFirmware tx\n");
 
 	// Refresh buffer from network
 	this->receiveDataFromServer();
@@ -162,7 +170,7 @@ uint8 GlutockFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
-	FCEU_printf("UNICORN GlutockFirmware tx <= %02x\n", result);
+	UDBG("UNICORN GlutockFirmware tx <= %02x\n", result);
 	return result;
 }
 
@@ -191,16 +199,16 @@ void GlutockFirmware::processBufferedMessages() {
 		std::deque<uint8>::size_type message_size = 0; // The processing of a message must set this value to the entire message size, to be able to remove it from buffer
 		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
 			case message_id_t::MSG_NULL:
-				FCEU_printf("UNICORN GlutockFirmware received message NULL\n");
+				UDBG("UNICORN GlutockFirmware received message NULL\n");
 				message_size = 1;
 				break;
 			case message_id_t::MSG_GET_WIFI_STATUS:
-				FCEU_printf("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
 				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
 				message_size = 1;
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
-				FCEU_printf("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
 				this->tx_buffer.push_back(this->socket != -1); // Server connection is ok if we succeed to open it
 				message_size = 1;
 				break;
@@ -214,7 +222,7 @@ void GlutockFirmware::processBufferedMessages() {
 					stop = true;
 					return;
 				}
-				FCEU_printf("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
+				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
 				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
 				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
 				this->sendMessageToServer(payload_begin, payload_end);
@@ -222,7 +230,7 @@ void GlutockFirmware::processBufferedMessages() {
 				break;
 			}
 			default:
-				FCEU_printf("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
+				UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
 				message_size = 1;
 				break;
 		};
@@ -238,11 +246,13 @@ void GlutockFirmware::processBufferedMessages() {
 
 template<class I>
 void GlutockFirmware::sendMessageToServer(I begin, I end) {
+#ifdef UNICORN_DBG
 	FCEU_printf("UNICORN message to send: ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
 	}
 	FCEU_printf("\n");
+#endif
 
 	if (this->socket != -1) {
 		size_t message_size = end - begin;
@@ -260,12 +270,12 @@ void GlutockFirmware::receiveDataFromServer() {
 	uint8 network_data[256];
 	ssize_t const read_result = read(this->socket, network_data, 256);
 	if (read_result < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-		FCEU_printf("UNICORN failed to read from network\n");
+		UDBG("UNICORN failed to read from network\n");
 		::close(this->socket);
 		this->socket = -1;
 	}
 	if (read_result > 0) {
-		FCEU_printf("UNICORN got %d bytes message from server\n", read_result);
+		UDBG("UNICORN got %d bytes message from server\n", read_result);
 		this->tx_buffer.insert(this->tx_buffer.end(), network_data, network_data + read_result);
 	}
 }
@@ -275,7 +285,7 @@ static uint32 WRAMSIZE;
 static EspFirmware *esp = NULL;
 
 static void LatchClose(void) {
-	FCEU_printf("UNICORN latch close\n");
+	UDBG("UNICORN latch close\n");
 	if (WRAM)
 		FCEU_gfree(WRAM);
 	WRAM = NULL;
@@ -284,22 +294,22 @@ static void LatchClose(void) {
 }
 
 static DECLFW(UNICORNWrite) {
-	FCEU_printf("UNICORN write %04x %02x\n", A, V);
+	UDBG("UNICORN write %04x %02x\n", A, V);
 	esp->rx(V);
 }
 
 static DECLFR(UNICORNRead) {
-	FCEU_printf("UNICORN read %04x\n", A);
+	UDBG("UNICORN read %04x\n", A);
 	return esp->tx();
 }
 
 static DECLFR(UNICORNReadFlags) {
-	FCEU_printf("UNICORN read flags %04x\n", A);
+	UDBG("UNICORN read flags %04x\n", A);
 	return esp->getGpio0() ? 0x80 : 0x00;
 }
 
 static void UNICORNPower(void) {
-	FCEU_printf("UNICORN power\n");
+	UDBG("UNICORN power\n");
 	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
 	setprg16(0x8000, ~1);
 	setprg16(0xC000, ~0);
@@ -319,7 +329,7 @@ static void UNICORNPower(void) {
 }
 
 void UNICORN_Init(CartInfo *info) {
-	FCEU_printf("UNICORN init\n");
+	UDBG("UNICORN init\n");
 	info->Power = UNICORNPower;
 	info->Close = LatchClose;
 
