@@ -1,51 +1,32 @@
 #include "mapinc.h"
 #include "../ines.h"
 
+#ifdef WIN32
+#include <winsock.h>
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <fcntl.h>
+#endif
+
 #include <deque>
+#include <sstream>
 
 class EspFirmware {
 public:
 	virtual ~EspFirmware() = default;
 
 	// Communication pins (dont care about UART details, directly transmit bytes)
-	virtual void rx(uint8 v);
-	virtual uint8 tx();
+	virtual void rx(uint8 v) = 0;
+	virtual uint8 tx() = 0;
 
 	// General purpose I/O pins
-	void setGpio0(bool v);
-	bool getGpio0();
-	void setGpio2(bool v);
-	bool getGpio2();
-
-private:
-	bool gpio0 = false;
-	bool gpio2 = false;
+	virtual void setGpio0(bool v) = 0;
+	virtual bool getGpio0() = 0;
+	virtual void setGpio2(bool v) = 0;
+	virtual bool getGpio2() = 0;
 };
-
-void EspFirmware::rx(uint8 v) {
-	FCEU_printf("EspFirmware TX %02x\n", v);
-}
-
-uint8 EspFirmware::tx() {
-	FCEU_printf("EspFirmware RX\n");
-	return 0;
-}
-
-void EspFirmware::setGpio0(bool v) {
-	this->gpio0 = v;
-}
-
-bool EspFirmware::getGpio0() {
-	return this->gpio0;
-}
-
-void EspFirmware::setGpio2(bool v) {
-	this->gpio2 = v;
-}
-
-bool EspFirmware::getGpio2() {
-	return this->gpio2;
-}
 
 class GlutockFirmware: public EspFirmware {
 public:
@@ -54,6 +35,11 @@ public:
 
 	void rx(uint8 v) override;
 	uint8 tx() override;
+
+	virtual void setGpio0(bool v) override;
+	virtual bool getGpio0() override;
+	virtual void setGpio2(bool v) override;
+	virtual bool getGpio2() override;
 
 private:
 	enum class message_id_t : uint8 {
@@ -67,20 +53,91 @@ private:
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
+	void receiveDataFromServer();
 
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
+
+	int socket = -1;
 };
 
 GlutockFirmware::GlutockFirmware() {
-	//TODO initialize network stuff
 	FCEU_printf("UNICORN GlutockFirmware ctor\n");
+
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	int sfd, s;
+
+	char* host = "localhost";
+	int port = 1234;
+
+	// Resolve address
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+	std::ostringstream port_str;
+	port_str << port;
+	s = getaddrinfo(host, port_str.str().c_str(), &hints, &result);
+	if (s != 0) {
+		FCEU_printf("UNICORN unable to resolve address\n");
+		return;
+	}
+
+	// Connect to server
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		sfd = ::socket(rp->ai_family, rp->ai_socktype,
+				rp->ai_protocol);
+		if (sfd == -1) {
+			continue;
+		}
+
+		if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) {
+			break;
+		}
+
+		close(sfd);
+	}
+	freeaddrinfo(result);
+	if (rp == NULL) {
+		FCEU_printf("UNICORN failed to connect to server\n");
+		return;
+	}
+
+	// Set socket in non-blocking mode
+	bool success = false;
+#ifdef _WIN32
+	unsigned long mode = 0;
+	if (ioctlsocket(sfd, FIONBIO, &mode) == 0) {
+		success = true;
+	}
+#else
+	int flags = fcntl(sfd, F_GETFL, 0);
+	if (flags != -1) {
+		flags |= O_NONBLOCK;
+		if (fcntl(sfd, F_SETFL, flags) == 0) {
+			success = true;
+		}
+	}
+#endif
+	if (!success) {
+		FCEU_printf("UNICORN failed to set socket in non-blocking mode");
+		close(sfd);
+		return;
+	}
+
+	// Store socket for later use
+	this->socket = sfd;
 }
 
 GlutockFirmware::~GlutockFirmware() {
-	//TODO clear network stuff
 	FCEU_printf("UNICORN GlutockFirmware dtor\n");
+	if (this->socket != -1) {
+		::close(this->socket);
+		this->socket = -1;
+	}
 }
 
 void GlutockFirmware::rx(uint8 v) {
@@ -88,13 +145,13 @@ void GlutockFirmware::rx(uint8 v) {
 
 	this->rx_buffer.push_back(v);
 	this->processBufferedMessages();
-	this->setGpio0(!this->tx_buffer.empty());
 }
 
 uint8 GlutockFirmware::tx() {
 	FCEU_printf("UNICORN GlutockFirmware tx\n");
 
-	//TODO Refresh buffer from network
+	// Refresh buffer from network
+	this->receiveDataFromServer();
 
 	// Get byte from buffer
 	uint8 result;
@@ -105,11 +162,23 @@ uint8 GlutockFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
-	// Update gpio
-	this->setGpio0(!this->tx_buffer.empty());
-
 	FCEU_printf("UNICORN GlutockFirmware tx <= %02x\n", result);
 	return result;
+}
+
+void GlutockFirmware::setGpio0(bool /*v*/) {
+}
+
+bool GlutockFirmware::getGpio0() {
+	this->receiveDataFromServer();
+	return !this->tx_buffer.empty();
+}
+
+void GlutockFirmware::setGpio2(bool /*v*/) {
+}
+
+bool GlutockFirmware::getGpio2() {
+	return 0;
 }
 
 void GlutockFirmware::processBufferedMessages() {
@@ -132,7 +201,7 @@ void GlutockFirmware::processBufferedMessages() {
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
 				FCEU_printf("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
-				this->tx_buffer.push_back(0); // Simple answer, server is not connected
+				this->tx_buffer.push_back(this->socket != -1); // Server connection is ok if we succeed to open it
 				message_size = 1;
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
@@ -169,12 +238,36 @@ void GlutockFirmware::processBufferedMessages() {
 
 template<class I>
 void GlutockFirmware::sendMessageToServer(I begin, I end) {
-	//TODO actually send data over the network
-	FCEU_printf("message to send: ");
+	FCEU_printf("UNICORN message to send: ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
 	}
 	FCEU_printf("\n");
+
+	if (this->socket != -1) {
+		size_t message_size = end - begin;
+		uint8 aggregated[message_size];
+		std::copy(begin, end, aggregated);
+		write(this->socket, aggregated, message_size);
+	}
+}
+
+void GlutockFirmware::receiveDataFromServer() {
+	if (this->socket < 0) {
+		return;
+	}
+
+	uint8 network_data[256];
+	ssize_t const read_result = read(this->socket, network_data, 256);
+	if (read_result < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		FCEU_printf("UNICORN failed to read from network\n");
+		::close(this->socket);
+		this->socket = -1;
+	}
+	if (read_result > 0) {
+		FCEU_printf("UNICORN got %d bytes message from server\n", read_result);
+		this->tx_buffer.insert(this->tx_buffer.end(), network_data, network_data + read_result);
+	}
 }
 
 static uint8 *WRAM = NULL;

@@ -52,6 +52,8 @@ nametable_attributes:
 
 main_screen_tick:
 .(
+	jsr main_receive_msg
+
 	lda controller_a_last_frame_btns
 	bne end
 
@@ -79,7 +81,7 @@ main_screen_send_msg:
 	lda #MSG_SEND_MESSAGE ; Message type - message for the server
 	sta $5000             ;
 
-	lda #13   ; Message length
+	lda #14   ; Message length
 	sta $5000 ;
 
 	lda #$55  ;
@@ -92,8 +94,8 @@ main_screen_send_msg:
 	sta $5000 ;
 	lda #$6f  ;
 	sta $5000 ;
-	lda #$72  ; Unicorn roxx!
-	sta $5000 ;
+	lda #$72  ;
+	sta $5000 ; Unicorn roxx!\n
 	lda #$6e  ;
 	sta $5000 ;
 	lda #$20  ;
@@ -107,6 +109,8 @@ main_screen_send_msg:
 	lda #$78  ;
 	sta $5000 ;
 	lda #$21  ;
+	sta $5000 ;
+	lda #$0a  ;
 	sta $5000 ;
 
 	rts
@@ -177,5 +181,54 @@ main_show_connection_state:
 	lda #0
 	sta nametable_buffers+5, x
 
+	rts
+.)
+
+main_receive_msg:
+.(
+	nb_chars = tmpfield1
+
+	; Check if there is data ready
+	bit $5001
+	bpl end
+
+		; Prepare the nametable buffer be drawn on screen
+		;  Continuation | PPU Address | Size | Data | Next continuation
+		;  $00          | $2204       | nb bytes read from esp | bytes from esp | $00
+		jsr last_nt_buffer
+		lda #1
+		sta nametable_buffers, x
+		lda #$22
+		sta nametable_buffers+1, x
+		lda #$04
+		sta nametable_buffers+2, x
+
+		lda #0
+		sta nb_chars
+
+		txa
+		tay
+		copy_one_byte_from_esp:
+			bit $5001
+			bpl end_copy
+
+			lda $5000
+			sec      ; Convert ascii to our alphatical tiles index
+			sbc #$5d ;
+			sta nametable_buffers+4, x
+			inx
+
+			inc nb_chars
+			jmp copy_one_byte_from_esp
+		end_copy:
+
+		lda #0
+		sta nametable_buffers+4, x
+		tya
+		tax
+		lda nb_chars
+		sta nametable_buffers+3, x
+
+	end:
 	rts
 .)
