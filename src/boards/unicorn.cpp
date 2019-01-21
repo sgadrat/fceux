@@ -1,17 +1,13 @@
 #include "mapinc.h"
 #include "../ines.h"
 
-#ifdef WIN32
-#include <winsock.h>
-#else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <fcntl.h>
-#endif
+#include "easywsclient.hpp"
+//#include "easywsclient.cpp"
 
 #include <deque>
 #include <sstream>
+
+using easywsclient::WebSocket;
 
 #undef UNICORN_DEBUG
 
@@ -20,6 +16,9 @@
 #else
 #define UDBG(...)
 #endif
+
+//////////////////////////////////////
+// Abstract ESP firmware interface
 
 class EspFirmware {
 public:
@@ -35,6 +34,9 @@ public:
 	virtual void setGpio2(bool v) = 0;
 	virtual bool getGpio2() = 0;
 };
+
+//////////////////////////////////////
+// Glutock's ESP firmware implementation
 
 class GlutockFirmware: public EspFirmware {
 public:
@@ -67,84 +69,25 @@ private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
 
-	int socket = -1;
+	WebSocket::pointer socket = nullptr;
 };
 
 GlutockFirmware::GlutockFirmware() {
 	UDBG("UNICORN GlutockFirmware ctor\n");
 
-	struct addrinfo hints;
-	struct addrinfo *result, *rp;
-	int sfd, s;
-
-	char* host = "localhost";
-	int port = 1234;
-
-	// Resolve address
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-	hints.ai_protocol = 0;
-	std::ostringstream port_str;
-	port_str << port;
-	s = getaddrinfo(host, port_str.str().c_str(), &hints, &result);
-	if (s != 0) {
-		UDBG("UNICORN unable to resolve address\n");
+	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:8126/foo");
+	if (!ws) {
+		UDBG("UNICORN unable to connect to server");
 		return;
 	}
-
-	// Connect to server
-	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		sfd = ::socket(rp->ai_family, rp->ai_socktype,
-				rp->ai_protocol);
-		if (sfd == -1) {
-			continue;
-		}
-
-		if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) {
-			break;
-		}
-
-		close(sfd);
-	}
-	freeaddrinfo(result);
-	if (rp == NULL) {
-		UDBG("UNICORN failed to connect to server\n");
-		return;
-	}
-
-	// Set socket in non-blocking mode
-	bool success = false;
-#ifdef _WIN32
-	unsigned long mode = 0;
-	if (ioctlsocket(sfd, FIONBIO, &mode) == 0) {
-		success = true;
-	}
-#else
-	int flags = fcntl(sfd, F_GETFL, 0);
-	if (flags != -1) {
-		flags |= O_NONBLOCK;
-		if (fcntl(sfd, F_SETFL, flags) == 0) {
-			success = true;
-		}
-	}
-#endif
-	if (!success) {
-		UDBG("UNICORN failed to set socket in non-blocking mode");
-		close(sfd);
-		return;
-	}
-
-	// Store socket for later use
-	this->socket = sfd;
+	this->socket = ws;
 }
 
 GlutockFirmware::~GlutockFirmware() {
 	UDBG("UNICORN GlutockFirmware dtor\n");
-	if (this->socket != -1) {
-		::close(this->socket);
-		this->socket = -1;
+	if (this->socket != nullptr) {
+		delete this->socket;
+		this->socket = nullptr;
 	}
 }
 
@@ -209,7 +152,7 @@ void GlutockFirmware::processBufferedMessages() {
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
-				this->tx_buffer.push_back(this->socket != -1); // Server connection is ok if we succeed to open it
+				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				message_size = 1;
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
@@ -254,31 +197,29 @@ void GlutockFirmware::sendMessageToServer(I begin, I end) {
 	FCEU_printf("\n");
 #endif
 
-	if (this->socket != -1) {
+	if (this->socket != nullptr) {
 		size_t message_size = end - begin;
-		uint8 aggregated[message_size];
-		std::copy(begin, end, aggregated);
-		write(this->socket, aggregated, message_size);
+		std::vector<uint8> aggregated;
+		aggregated.reserve(message_size);
+		aggregated.insert(aggregated.end(), begin, end);
+		this->socket->sendBinary(aggregated);
+		this->socket->poll();
 	}
 }
 
 void GlutockFirmware::receiveDataFromServer() {
-	if (this->socket < 0) {
+	if (this->socket == nullptr) {
 		return;
 	}
 
-	uint8 network_data[256];
-	ssize_t const read_result = read(this->socket, network_data, 256);
-	if (read_result < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-		UDBG("UNICORN failed to read from network\n");
-		::close(this->socket);
-		this->socket = -1;
-	}
-	if (read_result > 0) {
-		UDBG("UNICORN got %d bytes message from server\n", read_result);
-		this->tx_buffer.insert(this->tx_buffer.end(), network_data, network_data + read_result);
-	}
+	this->socket->poll();
+	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
+		this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
+	});
 }
+
+//////////////////////////////////////
+// Mapper implementation
 
 static uint8 *WRAM = NULL;
 static uint32 WRAMSIZE;

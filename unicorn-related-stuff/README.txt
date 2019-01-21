@@ -27,7 +27,7 @@ Then build the sample ROM:
 
 Start a simple server (on another terminal):
 
- $ nc -l -p1234
+ $ node unicorn-related-stuff/sample-server/sample-server.js
 
 Start the sample ROM with patched FCEUX:
 
