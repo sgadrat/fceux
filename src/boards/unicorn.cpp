@@ -2,7 +2,6 @@
 #include "../ines.h"
 
 #include "easywsclient.hpp"
-//#include "easywsclient.cpp"
 
 #include <deque>
 #include <sstream>
@@ -47,9 +46,6 @@ public:
 	void rx(uint8 v) override;
 	uint8 tx() override;
 
-	bool firstByte;
-	uint8 msgLength;
-
 	virtual void setGpio0(bool v) override;
 	virtual bool getGpio0() override;
 	virtual void setGpio2(bool v) override;
@@ -75,11 +71,13 @@ private:
 	std::deque<uint8> tx_buffer;
 
 	WebSocket::pointer socket = nullptr;
+
+	uint8 msg_length = 0;
+	bool msg_first_byte = true;
 };
 
 GlutockFirmware::GlutockFirmware() {
 	UDBG("UNICORN GlutockFirmware ctor\n");
-	this->firstByte = true;
 	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
 	if (!ws) {
 		UDBG("UNICORN unable to connect to server");
@@ -97,22 +95,18 @@ GlutockFirmware::~GlutockFirmware() {
 }
 
 void GlutockFirmware::rx(uint8 v) {
-
-	//UDBG("UNICORN GlutockFirmware rx %02x\n", v);
-	if (this->firstByte) {
-		UDBG("UNICORN RX first byte\n");
-		this->firstByte = false;
-		this->msgLength = v;
-		this->rx_buffer.resize(0);
+	if (this->msg_first_byte) {
+		this->msg_first_byte = false;
+		this->msg_length = v;
+		UDBG("UNICORN RX first byte: %d\n", v);
 	} else {
 		this->rx_buffer.push_back(v);
+		UDBG("UNICORN RX buffer size: %d\n", this->rx_buffer.size());
 	}
 
-	UDBG("buffer size : %d\n", this->rx_buffer.size());
-
-	if (this->rx_buffer.size() == msgLength) {
-		this->firstByte = true;
+	if (this->rx_buffer.size() == msg_length) {
 		this->processBufferedMessage();
+		this->msg_first_byte = true;
 	}
 }
 
@@ -151,37 +145,39 @@ bool GlutockFirmware::getGpio2() {
 }
 
 void GlutockFirmware::processBufferedMessage() {
-	// Process the message in RX buffer
-	switch (static_cast<message_id_t>(this->rx_buffer.front())) {
-		case message_id_t::MSG_NULL:
-			UDBG("UNICORN GlutockFirmware received message NULL\n");
-			break;
-		case message_id_t::MSG_DEBUG_LOG:
-			UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
-			break;
-		case message_id_t::MSG_GET_WIFI_STATUS:
-			UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
-			this->tx_buffer.push_back(1); // Simple answer, wifi is ok
-			break;
-		case message_id_t::MSG_GET_SERVER_STATUS:
-			UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
-			this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
-			break;
-		case message_id_t::MSG_SEND_MESSAGE: {
-			uint8 const payload_size = this->rx_buffer.size() - 1;
-			UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
-			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1; // +2;
-			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
-			this->sendMessageToServer(payload_begin, payload_end);
-			break;
-		}
-		default:
-			UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
-			break;
-	};
+	if (!this->rx_buffer.empty()) {
+		// Process the message in RX buffer
+		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
+			case message_id_t::MSG_NULL:
+				UDBG("UNICORN GlutockFirmware received message NULL\n");
+				break;
+			case message_id_t::MSG_DEBUG_LOG:
+				UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
+				break;
+			case message_id_t::MSG_GET_WIFI_STATUS:
+				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
+				break;
+			case message_id_t::MSG_GET_SERVER_STATUS:
+				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+				break;
+			case message_id_t::MSG_SEND_MESSAGE: {
+				uint8 const payload_size = this->rx_buffer.size() - 1;
+				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
+				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1;
+				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
+				this->sendMessageToServer(payload_begin, payload_end);
+				break;
+			}
+			default:
+				UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
+				break;
+		};
 
-	// Remove processed message
-	this->rx_buffer.resize(0);
+		// Remove processed message
+		this->rx_buffer.resize(0);
+	}
 }
 
 template<class I>
