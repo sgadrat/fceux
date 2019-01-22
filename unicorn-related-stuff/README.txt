@@ -17,7 +17,7 @@ Also there is the sample ROM. It is a little nes ROM made to test the mapper, it
 How to test
 ===========
 
-First, compile FCEUX (only tested on Linux, has good chances to fail on Windows):
+First, compile FCEUX:
 
  $ scons
 

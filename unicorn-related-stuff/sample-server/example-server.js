@@ -32,10 +32,12 @@ wss.on("connection", function(ws) {
     if (data == "goodbye") {
       console.log("<<< galaxy");
       ws.send("galaxy");
-    }
-    if (data == "hello") {
+    }else if (data == "hello") {
       console.log("<<< world");
       ws.send("world");
+    }else {
+      console.log("<<< what");
+	  ws.send("i agree with you");
     }
   });
   ws.on("close", function() {

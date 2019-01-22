@@ -1,7 +1,7 @@
 "use strict";
 
 process.title = 'sample-server';
-var webSocketsServerPort = 8126;
+var webSocketsServerPort = 3000;
 
 // websocket and http servers
 var webSocketServer = require('websocket').server;

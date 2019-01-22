@@ -64,7 +64,7 @@ private:
 		MSG_SEND_MESSAGE = 0x04,
 	};
 
-	void processBufferedMessages();
+	void processBufferedMessage();
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
@@ -112,7 +112,7 @@ void GlutockFirmware::rx(uint8 v) {
 
 	if (this->rx_buffer.size() == msgLength) {
 		this->firstByte = true;
-		this->processBufferedMessages();
+		this->processBufferedMessage();
 	}
 }
 
@@ -150,67 +150,38 @@ bool GlutockFirmware::getGpio2() {
 	return 0;
 }
 
-void GlutockFirmware::processBufferedMessages() {
-	/* This function process all messages from the RX buffer until
-	 * the buffer is empty or one message is icomplete.
-	 */
-
-	bool stop = false; // The processing of a message can set this flag to indicate that the message is incomplete, so processing has to stop
-	while (!this->rx_buffer.empty() && !stop) {
-		std::deque<uint8>::size_type message_size = 0; // The processing of a message must set this value to the entire message size, to be able to remove it from buffer
-		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
-		//switch (static_cast<message_id_t>(this->rx_buffer.at(1))) {
-			case message_id_t::MSG_NULL:
-				UDBG("UNICORN GlutockFirmware received message NULL\n");
-				message_size = 1;
-				break;
-			case message_id_t::MSG_DEBUG_LOG:
-				UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
-				message_size = 1;
-				break;
-			case message_id_t::MSG_GET_WIFI_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
-				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
-				message_size = 1;
-				break;
-			case message_id_t::MSG_GET_SERVER_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
-				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
-				message_size = 1;
-				break;
-			case message_id_t::MSG_SEND_MESSAGE: {
-				/*if (this->rx_buffer.size() < 2) {
-					stop = true;
-					return;
-				}
-				//uint8 const payload_size = this->rx_buffer[1];
-				if (this->rx_buffer.size() < payload_size + 2) {
-					stop = true;
-					return;
-				}*/
-				uint8 const payload_size = this->rx_buffer.size() - 1;
-				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
-				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1; // +2;
-				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
-				this->sendMessageToServer(payload_begin, payload_end);
-				message_size = payload_size; // +2;
-				this->rx_buffer.resize(0);
-				break;
-			}
-			default:
-				UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
-				message_size = 1;
-				break;
-		};
-		/*
-		// Remove processed message
-		assert(stop || message_size != 0); // message size of zero removes no bytes from buffer, if stop is not set it will trigger an infinite loop
-		if (message_size != 0) {
-			assert(message_size <= this->rx_buffer.size()); // cannot remove more bytes than what is in the buffer
-			this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
+void GlutockFirmware::processBufferedMessage() {
+	// Process the message in RX buffer
+	switch (static_cast<message_id_t>(this->rx_buffer.front())) {
+		case message_id_t::MSG_NULL:
+			UDBG("UNICORN GlutockFirmware received message NULL\n");
+			break;
+		case message_id_t::MSG_DEBUG_LOG:
+			UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
+			break;
+		case message_id_t::MSG_GET_WIFI_STATUS:
+			UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+			this->tx_buffer.push_back(1); // Simple answer, wifi is ok
+			break;
+		case message_id_t::MSG_GET_SERVER_STATUS:
+			UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+			this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+			break;
+		case message_id_t::MSG_SEND_MESSAGE: {
+			uint8 const payload_size = this->rx_buffer.size() - 1;
+			UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
+			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1; // +2;
+			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
+			this->sendMessageToServer(payload_begin, payload_end);
+			break;
 		}
-		*/
-	}
+		default:
+			UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.front());
+			break;
+	};
+
+	// Remove processed message
+	this->rx_buffer.resize(0);
 }
 
 template<class I>

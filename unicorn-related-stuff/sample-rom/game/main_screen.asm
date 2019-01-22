@@ -72,22 +72,25 @@ main_screen_tick:
 .)
 
 #define MSG_NULL 0
-#define MSG_GET_WIFI_STATUS 1
-#define MSG_GET_SERVER_STATUS 2
-#define MSG_SEND_MESSAGE 3
+#define MSG_DEBUG_LOG 1
+#define MSG_GET_WIFI_STATUS 2
+#define MSG_GET_SERVER_STATUS 3
+#define MSG_SEND_MESSAGE 4
 
 main_screen_send_msg:
 .(
 	; Send unknown message, mapper should ignore it
+	lda #1
+	sta $5000
 	lda #42
 	sta $5000
 
 	; Actually send a message for the server
+	lda #15   ; Message length
+	sta $5000 ;
+
 	lda #MSG_SEND_MESSAGE ; Message type - message for the server
 	sta $5000             ;
-
-	lda #14   ; Message length
-	sta $5000 ;
 
 	lda #$55  ;
 	sta $5000 ;
@@ -127,6 +130,8 @@ main_show_connection_state:
 	server_state = tmpfield2
 
 	; Fetch wifi state
+	lda #1                   ;
+	sta $5000                ;
 	lda #MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
 	sta $5000                ;
 
@@ -140,6 +145,8 @@ main_show_connection_state:
 	sta wifi_state ;
 
 	; Fetch server state
+	lda #1                     ;
+	sta $5000                  ;
 	lda #MSG_GET_SERVER_STATUS ; Send server status request to ESP
 	sta $5000                  ;
 
