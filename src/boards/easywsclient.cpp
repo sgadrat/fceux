@@ -79,6 +79,36 @@ using easywsclient::BytesCallback_Imp;
 
 namespace { // private module-only namespace
 
+#ifdef _WIN32
+class WSockApiInitializer {
+public:
+    WSockApiInitializer() {
+        WORD wVersionRequested;
+        WSADATA wsaData;
+        int err;
+
+        wVersionRequested = MAKEWORD(2, 2);
+        err = WSAStartup(wVersionRequested, &wsaData);
+        if (err != 0) {
+            fprintf(stderr, "WSAStartup failed with error: %d\n", err);
+        }else {
+            initialized = true;
+        }
+    }
+
+    ~WSockApiInitializer() {
+        if (initialized) {
+            WSACleanup();
+        }
+    }
+
+private:
+    bool initialized = false;
+};
+
+WSockApiInitializer g_sock_api_initializer;
+#endif
+
 socket_t hostname_connect(const std::string& hostname, int port) {
     struct addrinfo hints;
     struct addrinfo *result;
