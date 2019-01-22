@@ -37,3 +37,4 @@ config.log
 
 # unicorn specific
 unicorn-related-stuff/sample-rom/*.nes
+unicorn-related-stuff/sample-server/node_modules
