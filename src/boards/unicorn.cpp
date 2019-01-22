@@ -10,6 +10,7 @@
 using easywsclient::WebSocket;
 
 #undef UNICORN_DEBUG
+#define UNICORN_DEBUG
 
 #ifdef UNICORN_DEBUG
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
@@ -46,6 +47,9 @@ public:
 	void rx(uint8 v) override;
 	uint8 tx() override;
 
+	bool firstByte;
+	uint8 msgLength;
+
 	virtual void setGpio0(bool v) override;
 	virtual bool getGpio0() override;
 	virtual void setGpio2(bool v) override;
@@ -54,9 +58,10 @@ public:
 private:
 	enum class message_id_t : uint8 {
 		MSG_NULL = 0x00,
-		MSG_GET_WIFI_STATUS = 0x01,
-		MSG_GET_SERVER_STATUS = 0x02,
-		MSG_SEND_MESSAGE = 0x03,
+		MSG_DEBUG_LOG = 0x01,
+		MSG_GET_WIFI_STATUS = 0x02,
+		MSG_GET_SERVER_STATUS = 0x03,
+		MSG_SEND_MESSAGE = 0x04,
 	};
 
 	void processBufferedMessages();
@@ -74,8 +79,8 @@ private:
 
 GlutockFirmware::GlutockFirmware() {
 	UDBG("UNICORN GlutockFirmware ctor\n");
-
-	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:8126/foo");
+	this->firstByte = true;
+	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
 	if (!ws) {
 		UDBG("UNICORN unable to connect to server");
 		return;
@@ -92,10 +97,23 @@ GlutockFirmware::~GlutockFirmware() {
 }
 
 void GlutockFirmware::rx(uint8 v) {
-	UDBG("UNICORN GlutockFirmware rx %02x\n", v);
 
-	this->rx_buffer.push_back(v);
-	this->processBufferedMessages();
+	//UDBG("UNICORN GlutockFirmware rx %02x\n", v);
+	if (this->firstByte) {
+		UDBG("UNICORN RX first byte\n");
+		this->firstByte = false;
+		this->msgLength = v;
+		this->rx_buffer.resize(0);
+	} else {
+		this->rx_buffer.push_back(v);
+	}
+
+	UDBG("buffer size : %d\n", this->rx_buffer.size());
+
+	if (this->rx_buffer.size() == msgLength) {
+		this->firstByte = true;
+		this->processBufferedMessages();
+	}
 }
 
 uint8 GlutockFirmware::tx() {
@@ -141,8 +159,13 @@ void GlutockFirmware::processBufferedMessages() {
 	while (!this->rx_buffer.empty() && !stop) {
 		std::deque<uint8>::size_type message_size = 0; // The processing of a message must set this value to the entire message size, to be able to remove it from buffer
 		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
+		//switch (static_cast<message_id_t>(this->rx_buffer.at(1))) {
 			case message_id_t::MSG_NULL:
 				UDBG("UNICORN GlutockFirmware received message NULL\n");
+				message_size = 1;
+				break;
+			case message_id_t::MSG_DEBUG_LOG:
+				UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
 				message_size = 1;
 				break;
 			case message_id_t::MSG_GET_WIFI_STATUS:
@@ -156,20 +179,22 @@ void GlutockFirmware::processBufferedMessages() {
 				message_size = 1;
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
-				if (this->rx_buffer.size() < 2) {
+				/*if (this->rx_buffer.size() < 2) {
 					stop = true;
 					return;
 				}
-				uint8 const payload_size = this->rx_buffer[1];
+				//uint8 const payload_size = this->rx_buffer[1];
 				if (this->rx_buffer.size() < payload_size + 2) {
 					stop = true;
 					return;
-				}
+				}*/
+				uint8 const payload_size = this->rx_buffer.size() - 1;
 				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
-				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
+				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1; // +2;
 				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
 				this->sendMessageToServer(payload_begin, payload_end);
-				message_size = payload_size + 2;
+				message_size = payload_size; // +2;
+				this->rx_buffer.resize(0);
 				break;
 			}
 			default:
@@ -177,13 +202,14 @@ void GlutockFirmware::processBufferedMessages() {
 				message_size = 1;
 				break;
 		};
-
+		/*
 		// Remove processed message
 		assert(stop || message_size != 0); // message size of zero removes no bytes from buffer, if stop is not set it will trigger an infinite loop
 		if (message_size != 0) {
 			assert(message_size <= this->rx_buffer.size()); // cannot remove more bytes than what is in the buffer
 			this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
 		}
+		*/
 	}
 }
 
