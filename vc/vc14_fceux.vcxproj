@@ -75,8 +75,8 @@
   </PropertyGroup>
   <PropertyGroup Label="Globals" Condition="'$(v141_xp_Installed)'=='true'">
     <PlatformToolset>v141_xp</PlatformToolset>
-  </PropertyGroup>  
-  <Import Project="$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v140_xp\Microsoft.Cpp.$(Platform).v140_xp.props" Condition="Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v140_xp\Microsoft.Cpp.$(Platform).v140_xp.props')"/>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v140_xp\Microsoft.Cpp.$(Platform).v140_xp.props" Condition="Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v140_xp\Microsoft.Cpp.$(Platform).v140_xp.props')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
@@ -454,6 +454,7 @@
     <ClCompile Include="..\src\boards\cityfighter.cpp" />
     <ClCompile Include="..\src\boards\coolboy.cpp" />
     <ClCompile Include="..\src\boards\dance2000.cpp" />
+    <ClCompile Include="..\src\boards\easywsclient.cpp" />
     <ClCompile Include="..\src\boards\eh8813a.cpp" />
     <ClCompile Include="..\src\boards\et-100.cpp" />
     <ClCompile Include="..\src\boards\et-4320.cpp" />
@@ -482,6 +483,7 @@
     <ClCompile Include="..\src\boards\sa-9602b.cpp" />
     <ClCompile Include="..\src\boards\sb-2000.cpp" />
     <ClCompile Include="..\src\boards\transformer.cpp" />
+    <ClCompile Include="..\src\boards\unicorn.cpp" />
     <ClCompile Include="..\src\boards\unrom512.cpp" />
     <ClCompile Include="..\src\boards\vrc1.cpp" />
     <ClCompile Include="..\src\boards\vrc2and4.cpp" />
@@ -983,6 +985,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\asm.h" />
+    <ClInclude Include="..\src\boards\easywsclient.hpp" />
     <ClInclude Include="..\src\cart.h" />
     <ClInclude Include="..\src\cheat.h" />
     <ClInclude Include="..\src\conddebug.h" />

@@ -1093,6 +1093,12 @@
     <ClCompile Include="..\src\boards\hp10xx_hp20xx.cpp">
       <Filter>boards</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\boards\easywsclient.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\unicorn.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\drivers\common\args.h">
@@ -1598,6 +1604,9 @@
     </ClInclude>
     <ClInclude Include="..\src\input\fkb.h">
       <Filter>input</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\boards\easywsclient.hpp">
+      <Filter>boards</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
