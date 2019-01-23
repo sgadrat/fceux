@@ -1,4 +1,4 @@
-main_screen_init:
+sample_noirq_screen_init:
 .(
 	.(
 		; Point PPU to Background palette 0 (see http://wiki.nesdev.com/w/index.php/PPU_palettes)
@@ -47,16 +47,16 @@ nametable_attributes:
 
 .)
 
-main_screen_tick:
+sample_noirq_screen_tick:
 .(
 	; Reset drawn nametable buffers
 	jsr reset_nt_buffers
 
 	; Show data received from server
-	jsr main_receive_msg
+	jsr sample_noirq_receive_msg
 
 	; Show ESP states
-	jsr main_show_connection_state
+	jsr sample_noirq_show_connection_state
 
 	; When player presses a button, send a message to the server
 	lda controller_a_last_frame_btns
@@ -65,19 +65,23 @@ main_screen_tick:
 	lda controller_a_btns
 	beq end
 
-	jsr main_screen_send_msg
+	jsr sample_noirq_screen_send_msg
 
 	end:
 	rts
 .)
 
-#define MSG_NULL 0
-#define MSG_DEBUG_LOG 1
-#define MSG_GET_WIFI_STATUS 2
-#define MSG_GET_SERVER_STATUS 3
-#define MSG_SEND_MESSAGE 4
+#define TOESP_MSG_NULL 0
+#define TOESP_MSG_DEBUG_LOG 1
+#define TOESP_MSG_GET_WIFI_STATUS 2
+#define TOESP_MSG_GET_SERVER_STATUS 3
+#define TOESP_MSG_SEND_MESSAGE 4
 
-main_screen_send_msg:
+#define FROMESP_WIFI_STATUS 2
+#define FROMESP_SERVER_STATUS 3
+#define FROMESP_GOT_MESSAGE 4
+
+sample_noirq_screen_send_msg:
 .(
 	; Send unknown message, mapper should ignore it
 	lda #1
@@ -89,8 +93,8 @@ main_screen_send_msg:
 	lda #15   ; Message length
 	sta $5000 ;
 
-	lda #MSG_SEND_MESSAGE ; Message type - message for the server
-	sta $5000             ;
+	lda #TOESP_MSG_SEND_MESSAGE ; Message type - message for the server
+	sta $5000                   ;
 
 	lda #$55  ;
 	sta $5000 ;
@@ -124,16 +128,16 @@ main_screen_send_msg:
 	rts
 .)
 
-main_show_connection_state:
+sample_noirq_show_connection_state:
 .(
 	wifi_state = tmpfield1
 	server_state = tmpfield2
 
 	; Fetch wifi state
-	lda #1                   ;
-	sta $5000                ;
-	lda #MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
-	sta $5000                ;
+	lda #1                         ;
+	sta $5000                      ;
+	lda #TOESP_MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
+	sta $5000                      ;
 
 	.(               ;
 		wait_esp:    ;
@@ -141,14 +145,23 @@ main_show_connection_state:
 		bpl wait_esp ;
 	.)               ;
 
+	lda $5000 ; ESP message length (should be 3)
+	lda $5000 ; ESP message type (should be FROMESP_MSG_WIFI_STATUS)
 	lda $5000      ; Fetch ESP response
-	sta wifi_state ;
+	cmp #2              ;
+	beq green           ;
+		lda #0          ;
+		jmp store_state ; Convert response to 0=bad, 1=good
+	green:              ;
+		lda #1          ;
+	store_state:
+	sta wifi_state
 
 	; Fetch server state
-	lda #1                     ;
-	sta $5000                  ;
-	lda #MSG_GET_SERVER_STATUS ; Send server status request to ESP
-	sta $5000                  ;
+	lda #1                           ;
+	sta $5000                        ;
+	lda #TOESP_MSG_GET_SERVER_STATUS ; Send server status request to ESP
+	sta $5000                        ;
 
 	.(               ;
 		wait_esp:    ;
@@ -156,6 +169,8 @@ main_show_connection_state:
 		bpl wait_esp ;
 	.)               ;
 
+	lda $5000 ; ESP message length (should be 3)
+	lda $5000 ; ESP message type (should be FROMESP_MSG_SERVER_STATUS)
 	lda $5000        ; Fetch ESP response
 	sta server_state ;
 
@@ -198,13 +213,17 @@ main_show_connection_state:
 	rts
 .)
 
-main_receive_msg:
+sample_noirq_receive_msg:
 .(
 	nb_chars = tmpfield1
 
 	; Check if there is data ready
 	bit $5001
 	bpl end
+
+		; Burn ESP header
+		lda $5000 ; message length
+		lda $5000 ; message type
 
 		; Prepare the nametable buffer be drawn on screen
 		;  Continuation | PPU Address | Size                   | Data           | Next continuation

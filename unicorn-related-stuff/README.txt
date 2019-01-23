@@ -38,6 +38,6 @@ The ROM show wifi status and connection to server status at the top of the scree
 How to understand
 =================
 
-The interesting ROM code is in unicorn-related-stuff/sample-rom/game/main_screen.asm It should be nicely commented and be understandable without further documentation.
+The interesting ROM code is in unicorn-related-stuff/sample-rom/game/sample_irq.asm and unicorn-related-stuff/sample-rom/game/sample_noirq.asm. Both do the same: showing server state at screen's top, showing ascii messages from server and sending a message when pressing any button. sample_irq.asm does so by handling ESP messages asynchronously in the IRQ handler. sample_noirq.asm masks IRQs and polls the ESP when it expects a message.
 
 The mapper code for FCEUX is in src/boards/unicorn.cpp It is not commented enought, sorry. There is an abstract class EspFirmware which expose the possibility to send and receive bytes (emulating the UART TX and RX) and exposes two gpios (like the classical ESP-01 board). Derived from this abstract class, the GlutockFirmware class handle the networking and simulate features expected from the firmware. Code not in these classes is mapper code, for now it is a copy/past of the NROM code with extrat handling for port $5000 and $5001, communicating with the EspFirmware.

@@ -1,4 +1,4 @@
-#define INITIAL_GAME_STATE $00
+#define INITIAL_GAME_STATE $01
 
 #define TILENUM_NT_CHAR_0 #$04
 

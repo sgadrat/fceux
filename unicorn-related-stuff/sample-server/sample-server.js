@@ -50,7 +50,7 @@ wsServer.on('request', function(request) {
 			console.log((new Date()) + ' Received Binary Message of ' + message.binaryData.length + ' bytes: ' + message.binaryData);
 
 			// Send back a message to the client
-			var buf = Buffer.alloc(19, "message from server");
+			var buf = Buffer.alloc(20, "\x04message from server");
 			clients[index].sendBytes(buf);
 		}
 	});
