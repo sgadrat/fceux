@@ -242,6 +242,15 @@ static DECLFR(UNICORNReadFlags) {
 	return esp->getGpio0() ? 0x80 : 0x00;
 }
 
+static void UNICORN_hb(void) {
+	// TODO
+	//  Find something to avoid repeteadly interrupting
+	//  Add possibility to disable interrupt
+	if (esp->getGpio0()) {
+		X6502_IRQBegin(FCEU_IQEXT);
+	}
+}
+
 static void UNICORNPower(void) {
 	UDBG("UNICORN power\n");
 	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
@@ -275,4 +284,7 @@ void UNICORN_Init(CartInfo *info) {
 		info->SaveGameLen[0] = WRAMSIZE;
 	}
 	AddExState(WRAM, WRAMSIZE, 0, "WRAM");
+
+	// Set a hook on hblank to be able periodically check if we have to send an interupt
+	GameHBIRQHook = UNICORN_hb;
 }
