@@ -28,11 +28,14 @@ public:
 	virtual void rx(uint8 v) = 0;
 	virtual uint8 tx() = 0;
 
+	bool esp_enable = true;
+	bool irq_enable = true;
+
 	// General purpose I/O pins
-	virtual void setGpio0(bool v) = 0;
-	virtual bool getGpio0() = 0;
-	virtual void setGpio2(bool v) = 0;
-	virtual bool getGpio2() = 0;
+	virtual void setGpio15(bool v) = 0;
+	virtual bool getGpio15() = 0;
+	//virtual void setGpio2(bool v) = 0;
+	//virtual bool getGpio2() = 0;
 };
 
 //////////////////////////////////////
@@ -46,10 +49,13 @@ public:
 	void rx(uint8 v) override;
 	uint8 tx() override;
 
-	virtual void setGpio0(bool v) override;
-	virtual bool getGpio0() override;
-	virtual void setGpio2(bool v) override;
-	virtual bool getGpio2() override;
+	bool esp_enable = true;
+	bool irq_enable = true;
+
+	virtual void setGpio15(bool v) override;
+	virtual bool getGpio15() override;
+	//virtual void setGpio2(bool v) override;
+	//virtual bool getGpio2() override;
 
 private:
 	enum class message_id_t : uint8 {
@@ -80,8 +86,9 @@ private:
 
 	WebSocket::pointer socket = nullptr;
 
-	uint8 msg_length = 0;
 	bool msg_first_byte = true;
+	uint8 msg_length = 0;
+	uint8 last_byte_read = 0;
 };
 
 GlutockFirmware::GlutockFirmware() {
@@ -103,14 +110,14 @@ GlutockFirmware::~GlutockFirmware() {
 }
 
 void GlutockFirmware::rx(uint8 v) {
+	UDBG("UNICORN GlutockFirmware rx %02x\n", v);
 	if (this->msg_first_byte) {
 		this->msg_first_byte = false;
-		this->msg_length = v;
-		UDBG("UNICORN RX first byte: %d\n", v);
-	} else {
-		this->rx_buffer.push_back(v);
-		UDBG("UNICORN RX buffer size: %d\n", this->rx_buffer.size());
+		this->msg_length = v + 1;
+		//UDBG("UNICORN RX first byte: %d\n", v);
 	}
+	this->rx_buffer.push_back(v);
+
 
 	if (this->rx_buffer.size() == msg_length) {
 		this->processBufferedMessage();
@@ -125,53 +132,57 @@ uint8 GlutockFirmware::tx() {
 	this->receiveDataFromServer();
 
 	// Get byte from buffer
-	uint8 result;
-	if (this->tx_buffer.empty()) {
-		result = 0;
-	}else {
-		result = this->tx_buffer.front();
+	if (!this->tx_buffer.empty()) {
+		last_byte_read = this->tx_buffer.front();
 		this->tx_buffer.pop_front();
 	}
 
-	UDBG("UNICORN GlutockFirmware tx <= %02x\n", result);
-	return result;
+	// clear IRQ if tx buffer is empty
+	// ... a bit hacky since the hardware this fast ...
+	if(this->tx_buffer.empty() && this->irq_enable)
+		X6502_IRQEnd(FCEU_IQEXT);
+
+	UDBG("UNICORN GlutockFirmware tx <= %02x\n", last_byte_read);
+	return last_byte_read;
 }
 
-void GlutockFirmware::setGpio0(bool /*v*/) {
+void GlutockFirmware::setGpio15(bool /*v*/) {
 }
 
-bool GlutockFirmware::getGpio0() {
+bool GlutockFirmware::getGpio15() {
 	this->receiveDataFromServer();
 	return !this->tx_buffer.empty();
 }
 
-void GlutockFirmware::setGpio2(bool /*v*/) {
-}
+//void GlutockFirmware::setGpio2(bool /*v*/) {}
 
-bool GlutockFirmware::getGpio2() {
-	return 0;
-}
+//bool GlutockFirmware::getGpio2() {return 0;}
 
 void GlutockFirmware::processBufferedMessage() {
+
 	if (!this->rx_buffer.empty()) {
+		if (this->rx_buffer.size() < 2)
+			return;
+
 		// Process the message in RX buffer
-		switch (static_cast<message_id_t>(this->rx_buffer.front())) {
+		switch (static_cast<message_id_t>(this->rx_buffer.at(1))) {
 			case message_id_t::MSG_NULL:
 				UDBG("UNICORN GlutockFirmware received message NULL\n");
 				break;
 			case message_id_t::MSG_DEBUG_LOG:
-				UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
+				//UDBG("UNICORN GlutockFirmware received message DEBUG_LOG\n");
+				UDBG("UNICORN DEBUG/LOG : %02x\n", this->rx_buffer.at(1));
 				break;
 			case message_id_t::MSG_GET_WIFI_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
 				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_WIFI_STATUS);
+				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_WIFI_STATUS));
 				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
 				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_SERVER_STATUS);
+				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_SERVER_STATUS));
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
@@ -188,7 +199,14 @@ void GlutockFirmware::processBufferedMessage() {
 		};
 
 		// Remove processed message
-		this->rx_buffer.resize(0);
+		std::deque<uint8>::size_type message_size = this->rx_buffer.front() + 1;
+		
+		// cannot remove more bytes than what is in the buffer
+		if (message_size > this->rx_buffer.size())
+			message_size = this->rx_buffer.size();
+
+		this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
+
 	}
 }
 
@@ -221,8 +239,9 @@ void GlutockFirmware::receiveDataFromServer() {
 	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
 		size_t const msg_len = data.end() - data.begin();
 		if (msg_len <= 0xff) {
-			this->tx_buffer.push_back(static_cast<uint8>(msg_len));
-			this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GOT_MESSAGE);
+			//this->tx_buffer.resize(0);
+			this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
+			this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GOT_MESSAGE));
 			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
 		}
 	});
@@ -234,7 +253,7 @@ void GlutockFirmware::receiveDataFromServer() {
 static uint8 *WRAM = NULL;
 static uint32 WRAMSIZE;
 static EspFirmware *esp = NULL;
-static last_gpio_state = false;
+//static bool last_gpio_state = false;
 
 static void LatchClose(void) {
 	UDBG("UNICORN latch close\n");
@@ -255,27 +274,53 @@ static DECLFR(UNICORNRead) {
 	return esp->tx();
 }
 
-static DECLFR(UNICORNReadFlags) {
-	UDBG("UNICORN read flags %04x\n", A);
-	return last_gpio_state ? 0x80 : 0x00;
+static DECLFW(UNICORNWriteFlags) {
+	UDBG("UNICORN write %04x %02x\n", A, V);
+	esp->esp_enable = V & 0x01;
+	esp->irq_enable = V & 0x40;
 }
 
-static void UNICORN_hb(void) {
-	bool const current_gpio_state = esp->getGpio0();
-	if (current_gpio_state && !last_gpio_state) {
-		X6502_IRQBegin(FCEU_IQEXT);
-	}
-	last_gpio_state = current_gpio_state;
+static DECLFR(UNICORNReadFlags) {
+	UDBG("UNICORN read flags %04x\n", A);
+	uint8 esp_rts = esp->getGpio15() ? 0x80 : 0x00;
+	uint8 esp_enable = esp->esp_enable ? 0x01 : 0x00;
+	uint8 irq_enable = esp->irq_enable ? 0x40 : 0x00;
+	return esp_rts | esp_enable | irq_enable;
+	//return last_gpio_state ? 0x80 : 0x00;
 }
 
 static void UNICORN_hb(void) {
 	// TODO
 	//  Find something to avoid repeteadly interrupting
 	//  Add possibility to disable interrupt
-	if (esp->getGpio0()) {
+	bool const current_gpio_state = esp->getGpio15();
+	if (esp->irq_enable) {
+		if (current_gpio_state) {
+			X6502_IRQBegin(FCEU_IQEXT);
+		}
+		else {
+			X6502_IRQEnd(FCEU_IQEXT);
+		}
+	}
+
+	/*
+	bool const current_gpio_state = esp->getGpio15();
+	if (current_gpio_state && !last_gpio_state) {
+		X6502_IRQBegin(FCEU_IQEXT);
+	}
+	last_gpio_state = current_gpio_state;
+	*/
+}
+/*
+static void UNICORN_hb(void) {
+	// TODO
+	//  Find something to avoid repeteadly interrupting
+	//  Add possibility to disable interrupt
+	if (esp->getGpio15()) {
 		X6502_IRQBegin(FCEU_IQEXT);
 	}
 }
+*/
 
 static void UNICORNPower(void) {
 	UDBG("UNICORN power\n");
@@ -292,10 +337,11 @@ static void UNICORNPower(void) {
 
 	SetWriteHandler(0x5000, 0x5000, UNICORNWrite);
 	SetReadHandler(0x5000, 0x5000, UNICORNRead);
+	SetWriteHandler(0x5001, 0x5001, UNICORNWriteFlags);
 	SetReadHandler(0x5001, 0x5001, UNICORNReadFlags);
 
 	esp = new GlutockFirmware;
-	last_gpio_state = false;
+	//last_gpio_state = false;
 }
 
 void UNICORN_Init(CartInfo *info) {
