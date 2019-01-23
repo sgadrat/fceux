@@ -217,6 +217,7 @@ void GlutockFirmware::receiveDataFromServer() {
 static uint8 *WRAM = NULL;
 static uint32 WRAMSIZE;
 static EspFirmware *esp = NULL;
+static last_gpio_state = false;
 
 static void LatchClose(void) {
 	UDBG("UNICORN latch close\n");
@@ -239,7 +240,15 @@ static DECLFR(UNICORNRead) {
 
 static DECLFR(UNICORNReadFlags) {
 	UDBG("UNICORN read flags %04x\n", A);
-	return esp->getGpio0() ? 0x80 : 0x00;
+	return last_gpio_state ? 0x80 : 0x00;
+}
+
+static void UNICORN_hb(void) {
+	bool const current_gpio_state = esp->getGpio0();
+	if (current_gpio_state && !last_gpio_state) {
+		X6502_IRQBegin(FCEU_IQEXT);
+	}
+	last_gpio_state = current_gpio_state;
 }
 
 static void UNICORN_hb(void) {
@@ -269,6 +278,7 @@ static void UNICORNPower(void) {
 	SetReadHandler(0x5001, 0x5001, UNICORNReadFlags);
 
 	esp = new GlutockFirmware;
+	last_gpio_state = false;
 }
 
 void UNICORN_Init(CartInfo *info) {
