@@ -60,6 +60,14 @@ private:
 		MSG_SEND_MESSAGE = 0x04,
 	};
 
+	enum class server_message_id_t : uint8 {
+		MSG_NULL = 0x00,
+		MSG_DEBUG_LOG = 0x01,
+		MSG_GET_WIFI_STATUS = 0x02,
+		MSG_GET_SERVER_STATUS = 0x03,
+		MSG_GOT_MESSAGE = 0x04,
+	};
+
 	void processBufferedMessage();
 
 	template<class I>
@@ -156,10 +164,14 @@ void GlutockFirmware::processBufferedMessage() {
 				break;
 			case message_id_t::MSG_GET_WIFI_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				this->tx_buffer.push_back(2);
+				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_WIFI_STATUS);
 				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				this->tx_buffer.push_back(2);
+				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_SERVER_STATUS);
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
@@ -207,7 +219,12 @@ void GlutockFirmware::receiveDataFromServer() {
 
 	this->socket->poll();
 	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
-		this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
+		size_t const msg_len = data.end() - data.begin();
+		if (msg_len <= 0xff) {
+			this->tx_buffer.push_back(static_cast<uint8>(msg_len));
+			this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GOT_MESSAGE);
+			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
+		}
 	});
 }
 
