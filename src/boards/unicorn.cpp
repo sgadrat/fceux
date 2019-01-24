@@ -118,7 +118,6 @@ void GlutockFirmware::rx(uint8 v) {
 	}
 	this->rx_buffer.push_back(v);
 
-
 	if (this->rx_buffer.size() == msg_length) {
 		this->processBufferedMessage();
 		this->msg_first_byte = true;
@@ -176,19 +175,19 @@ void GlutockFirmware::processBufferedMessage() {
 			case message_id_t::MSG_GET_WIFI_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
 				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_WIFI_STATUS));
-				this->tx_buffer.push_back(1); // Simple answer, wifi is ok
+				this->tx_buffer.push_back(static_cast<uint8>(message_id_t::MSG_GET_WIFI_STATUS));
+				this->tx_buffer.push_back(2); // Simple answer, wifi is ok
 				break;
 			case message_id_t::MSG_GET_SERVER_STATUS:
 				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
 				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GET_SERVER_STATUS));
+				this->tx_buffer.push_back(static_cast<uint8>(message_id_t::MSG_GET_SERVER_STATUS));
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case message_id_t::MSG_SEND_MESSAGE: {
-				uint8 const payload_size = this->rx_buffer.size() - 1;
+				uint8 const payload_size = this->rx_buffer.size() - 2;
 				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
-				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 1;
+				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
 				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
 				this->sendMessageToServer(payload_begin, payload_end);
 				break;
@@ -239,9 +238,10 @@ void GlutockFirmware::receiveDataFromServer() {
 	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
 		size_t const msg_len = data.end() - data.begin();
 		if (msg_len <= 0xff) {
+			UDBG("UNICORN WebSocket data received...\n");
 			//this->tx_buffer.resize(0);
-			this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
-			this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GOT_MESSAGE));
+			this->tx_buffer.push_back(static_cast<uint8>(msg_len));
+			//this->tx_buffer.push_back(static_cast<uint8>(server_message_id_t::MSG_GOT_MESSAGE));
 			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
 		}
 	});
@@ -289,13 +289,12 @@ static DECLFR(UNICORNReadFlags) {
 	//return last_gpio_state ? 0x80 : 0x00;
 }
 
-static void UNICORN_hb(void) {
+static void UNICORNMapIrq(int32) {
 	// TODO
 	//  Find something to avoid repeteadly interrupting
 	//  Add possibility to disable interrupt
-	bool const current_gpio_state = esp->getGpio15();
 	if (esp->irq_enable) {
-		if (current_gpio_state) {
+		if (esp->getGpio15()) {
 			X6502_IRQBegin(FCEU_IQEXT);
 		}
 		else {
@@ -359,5 +358,5 @@ void UNICORN_Init(CartInfo *info) {
 	AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 
 	// Set a hook on hblank to be able periodically check if we have to send an interupt
-	GameHBIRQHook = UNICORN_hb;
+	MapIRQHook = UNICORNMapIrq;
 }
