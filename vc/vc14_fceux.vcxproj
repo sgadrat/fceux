@@ -483,7 +483,7 @@
     <ClCompile Include="..\src\boards\sa-9602b.cpp" />
     <ClCompile Include="..\src\boards\sb-2000.cpp" />
     <ClCompile Include="..\src\boards\transformer.cpp" />
-    <ClCompile Include="..\src\boards\unicorn.cpp" />
+    <ClCompile Include="..\src\boards\rainbow.cpp" />
     <ClCompile Include="..\src\boards\unrom512.cpp" />
     <ClCompile Include="..\src\boards\vrc1.cpp" />
     <ClCompile Include="..\src\boards\vrc2and4.cpp" />

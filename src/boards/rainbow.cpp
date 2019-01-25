@@ -8,10 +8,10 @@
 
 using easywsclient::WebSocket;
 
-#undef UNICORN_DEBUG
-#define UNICORN_DEBUG
+#undef RAINBOW_DEBUG
+#define RAINBOW_DEBUG
 
-#ifdef UNICORN_DEBUG
+#ifdef RAINBOW_DEBUG
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
 #else
 #define UDBG(...)
@@ -34,12 +34,12 @@ public:
 };
 
 //////////////////////////////////////
-// Glutock's ESP firmware implementation
+// BrokeStudio's ESP firmware implementation
 
-class GlutockFirmware: public EspFirmware {
+class BrokeStudioFirmware: public EspFirmware {
 public:
-	GlutockFirmware();
-	~GlutockFirmware();
+	BrokeStudioFirmware();
+	~BrokeStudioFirmware();
 
 	void rx(uint8 v) override;
 	uint8 tx() override;
@@ -89,26 +89,26 @@ private:
 	uint8 last_byte_read = 0;
 };
 
-GlutockFirmware::GlutockFirmware() {
-	UDBG("UNICORN GlutockFirmware ctor\n");
+BrokeStudioFirmware::BrokeStudioFirmware() {
+	UDBG("RAINBOW BrokeStudioFirmware ctor\n");
 	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
 	if (!ws) {
-		UDBG("UNICORN unable to connect to server");
+		UDBG("RAINBOW unable to connect to server");
 		return;
 	}
 	this->socket = ws;
 }
 
-GlutockFirmware::~GlutockFirmware() {
-	UDBG("UNICORN GlutockFirmware dtor\n");
+BrokeStudioFirmware::~BrokeStudioFirmware() {
+	UDBG("RAINBOW BrokeStudioFirmware dtor\n");
 	if (this->socket != nullptr) {
 		delete this->socket;
 		this->socket = nullptr;
 	}
 }
 
-void GlutockFirmware::rx(uint8 v) {
-	UDBG("UNICORN GlutockFirmware rx %02x\n", v);
+void BrokeStudioFirmware::rx(uint8 v) {
+	UDBG("RAINBOW BrokeStudioFirmware rx %02x\n", v);
 	if (this->msg_first_byte) {
 		this->msg_first_byte = false;
 		this->msg_length = v + 1;
@@ -121,8 +121,8 @@ void GlutockFirmware::rx(uint8 v) {
 	}
 }
 
-uint8 GlutockFirmware::tx() {
-	UDBG("UNICORN GlutockFirmware tx\n");
+uint8 BrokeStudioFirmware::tx() {
+	UDBG("RAINBOW BrokeStudioFirmware tx\n");
 
 	// Refresh buffer from network
 	this->receiveDataFromServer();
@@ -133,28 +133,28 @@ uint8 GlutockFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
-	UDBG("UNICORN GlutockFirmware tx <= %02x\n", last_byte_read);
+	UDBG("RAINBOW BrokeStudioFirmware tx <= %02x\n", last_byte_read);
 	return last_byte_read;
 }
 
-void GlutockFirmware::setGpio15(bool /*v*/) {
+void BrokeStudioFirmware::setGpio15(bool /*v*/) {
 }
 
-bool GlutockFirmware::getGpio15() {
+bool BrokeStudioFirmware::getGpio15() {
 	this->receiveDataFromServer();
 	return !this->tx_buffer.empty();
 }
 
-void GlutockFirmware::processBufferedMessage() {
+void BrokeStudioFirmware::processBufferedMessage() {
 	if (this->rx_buffer.size() >= 2) {
 		// Process the message in RX buffer
 		switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
 			case n2e_cmds_t::UNUSED_0:
-				UDBG("UNICORN GlutockFirmware received message NULL\n");
+				UDBG("RAINBOW BrokeStudioFirmware received message NULL\n");
 				break;
 			case n2e_cmds_t::DEBUG_LOG:
-				#ifdef UNICORN_DBG
-					FCEU_printf("UNICORN DEBUG/LOG: ");
+				#ifdef RAINBOW_DBG
+					FCEU_printf("RAINBOW DEBUG/LOG: ");
 					for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
 						FCEU_printf("%02x ", *cur);
 					}
@@ -165,21 +165,21 @@ void GlutockFirmware::processBufferedMessage() {
 				// TODO : clean tx / rx buffers
 				break;
 			case n2e_cmds_t::GET_WIFI_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
 				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(2);
 				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::WIFI_STATUS));
 				this->tx_buffer.push_back(3); // Simple answer, wifi is ok
 				break;
 			case n2e_cmds_t::GET_SERVER_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_STATUS\n");
 				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(2);
 				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
-				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
+				UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
 				uint8 const payload_size = this->rx_buffer.size() - 2;
 				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
 				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
@@ -187,7 +187,7 @@ void GlutockFirmware::processBufferedMessage() {
 				break;
 			}
 			default:
-				UDBG("UNICORN GlutockFirmware received unknown message %02x\n", this->rx_buffer.at(1));
+				UDBG("RAINBOW BrokeStudioFirmware received unknown message %02x\n", this->rx_buffer.at(1));
 				break;
 		};
 
@@ -202,9 +202,9 @@ void GlutockFirmware::processBufferedMessage() {
 }
 
 template<class I>
-void GlutockFirmware::sendMessageToServer(I begin, I end) {
-#ifdef UNICORN_DBG
-	FCEU_printf("UNICORN message to send: ");
+void BrokeStudioFirmware::sendMessageToServer(I begin, I end) {
+#ifdef RAINBOW_DBG
+	FCEU_printf("RAINBOW message to send: ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
 	}
@@ -221,7 +221,7 @@ void GlutockFirmware::sendMessageToServer(I begin, I end) {
 	}
 }
 
-void GlutockFirmware::receiveDataFromServer() {
+void BrokeStudioFirmware::receiveDataFromServer() {
 	if (this->socket == nullptr) {
 		return;
 	}
@@ -230,7 +230,7 @@ void GlutockFirmware::receiveDataFromServer() {
 	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
 		size_t const msg_len = data.end() - data.begin();
 		if (msg_len <= 0xff) {
-			UDBG("UNICORN WebSocket data received...\n");
+			UDBG("RAINBOW WebSocket data received...\n");
 			// add last received byte first to match hardware behavior
 			// it's more of a mapper thing though ...
 			// needs a dummy $5000 read when reading data from buffer
@@ -252,7 +252,7 @@ static bool esp_enable = true;
 static bool irq_enable = true;
 
 static void LatchClose(void) {
-	UDBG("UNICORN latch close\n");
+	UDBG("RAINBOW latch close\n");
 	if (WRAM)
 		FCEU_gfree(WRAM);
 	WRAM = NULL;
@@ -260,31 +260,31 @@ static void LatchClose(void) {
 	delete esp;
 }
 
-static DECLFW(UNICORNWrite) {
-	UDBG("UNICORN write %04x %02x\n", A, V);
+static DECLFW(RAINBOWWrite) {
+	UDBG("RAINBOW write %04x %02x\n", A, V);
 	esp->rx(V);
 }
 
-static DECLFR(UNICORNRead) {
-	UDBG("UNICORN read %04x\n", A);
+static DECLFR(RAINBOWRead) {
+	UDBG("RAINBOW read %04x\n", A);
 	return esp->tx();
 }
 
-static DECLFW(UNICORNWriteFlags) {
-	UDBG("UNICORN write %04x %02x\n", A, V);
+static DECLFW(RAINBOWWriteFlags) {
+	UDBG("RAINBOW write %04x %02x\n", A, V);
 	esp_enable = V & 0x01;
 	irq_enable = V & 0x40;
 }
 
-static DECLFR(UNICORNReadFlags) {
-	UDBG("UNICORN read flags %04x\n", A);
+static DECLFR(RAINBOWReadFlags) {
+	UDBG("RAINBOW read flags %04x\n", A);
 	uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
 	uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
 	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
 	return esp_rts_flag | esp_enable_flag | irq_enable_flag;
 }
 
-static void UNICORNMapIrq(int32) {
+static void RAINBOWMapIrq(int32) {
 	if (irq_enable) {
 		if (esp->getGpio15()) {
 			X6502_IRQBegin(FCEU_IQEXT);
@@ -294,8 +294,8 @@ static void UNICORNMapIrq(int32) {
 	}
 }
 
-static void UNICORNPower(void) {
-	UDBG("UNICORN power\n");
+static void RAINBOWPower(void) {
+	UDBG("RAINBOW power\n");
 	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
 	setprg16(0x8000, ~1);
 	setprg16(0xC000, ~0);
@@ -307,19 +307,19 @@ static void UNICORNPower(void) {
 
 	FCEU_CheatAddRAM(WRAMSIZE >> 10, 0x6000, WRAM);
 
-	SetWriteHandler(0x5000, 0x5000, UNICORNWrite);
-	SetReadHandler(0x5000, 0x5000, UNICORNRead);
-	SetWriteHandler(0x5001, 0x5001, UNICORNWriteFlags);
-	SetReadHandler(0x5001, 0x5001, UNICORNReadFlags);
+	SetWriteHandler(0x5000, 0x5000, RAINBOWWrite);
+	SetReadHandler(0x5000, 0x5000, RAINBOWRead);
+	SetWriteHandler(0x5001, 0x5001, RAINBOWWriteFlags);
+	SetReadHandler(0x5001, 0x5001, RAINBOWReadFlags);
 
-	esp = new GlutockFirmware;
+	esp = new BrokeStudioFirmware;
 	esp_enable = true;
 	irq_enable = true;
 }
 
-void UNICORN_Init(CartInfo *info) {
-	UDBG("UNICORN init\n");
-	info->Power = UNICORNPower;
+void RAINBOW_Init(CartInfo *info) {
+	UDBG("RAINBOW init\n");
+	info->Power = RAINBOWPower;
 	info->Close = LatchClose;
 
 	WRAMSIZE = 8192;
@@ -332,5 +332,5 @@ void UNICORN_Init(CartInfo *info) {
 	AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 
 	// Set a hook on hblank to be able periodically check if we have to send an interupt
-	MapIRQHook = UNICORNMapIrq;
+	MapIRQHook = RAINBOWMapIrq;
 }

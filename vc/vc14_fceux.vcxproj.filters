@@ -1096,7 +1096,7 @@
     <ClCompile Include="..\src\boards\easywsclient.cpp">
       <Filter>boards</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\boards\unicorn.cpp">
+    <ClCompile Include="..\src\boards\rainbow.cpp">
       <Filter>boards</Filter>
     </ClCompile>
   </ItemGroup>

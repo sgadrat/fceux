@@ -104,19 +104,19 @@ sample_noirq_screen_send_msg:
 	lda #TOESP_MSG_SEND_MESSAGE ; Message type - message for the server
 	sta $5000                   ;
 
-	lda #$55  ;
+	lda #$52  ;
 	sta $5000 ;
-	lda #$6e  ;
+	lda #$61  ;
 	sta $5000 ;
 	lda #$69  ;
 	sta $5000 ;
-	lda #$63  ;
+	lda #$6e  ;
+	sta $5000 ;
+	lda #$62  ;
 	sta $5000 ;
 	lda #$6f  ;
-	sta $5000 ;
-	lda #$72  ;
-	sta $5000 ; Unicorn roxx!\n
-	lda #$6e  ;
+	sta $5000 ; Rainbow roxx!\n
+	lda #$77  ;
 	sta $5000 ;
 	lda #$20  ;
 	sta $5000 ;
