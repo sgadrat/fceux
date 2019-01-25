@@ -31,13 +31,13 @@ wss.on("connection", function(ws) {
     console.log(data);
     if (data == "goodbye") {
       console.log("<<< galaxy");
-      ws.send("\x04galaxy");
+      ws.send("galaxy");
     }else if (data == "hello") {
       console.log("<<< world");
-      ws.send("\x04world");
+      ws.send("world");
     }else {
       console.log("<<< what");
-	  ws.send("\x04i agree with you");
+	  ws.send("i agree with you");
     }
   });
   ws.on("close", function() {

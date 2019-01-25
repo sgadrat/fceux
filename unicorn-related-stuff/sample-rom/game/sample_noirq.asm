@@ -73,13 +73,21 @@ sample_noirq_screen_tick:
 
 #define TOESP_MSG_NULL 0
 #define TOESP_MSG_DEBUG_LOG 1
-#define TOESP_MSG_GET_WIFI_STATUS 2
-#define TOESP_MSG_GET_SERVER_STATUS 3
-#define TOESP_MSG_SEND_MESSAGE 4
+#define TOESP_MSG_CLEAR_BUFFERS 2
+#define TOESP_MSG_GET_WIFI_STATUS 3
+#define TOESP_MSG_GET_SERVER_STATUS 4
+#define TOESP_MSG_CONNECT_TO_SERVER 5
+#define TOESP_MSG_DISCONNECT_FROM_SERVER 6
+#define TOESP_MSG_SEND_MESSAGE 7
 
-#define FROMESP_WIFI_STATUS 2
-#define FROMESP_SERVER_STATUS 3
-#define FROMESP_GOT_MESSAGE 4
+#define FROMESP_UNUSED_0 0
+#define FROMESP_UNUSED_1 1
+#define FROMESP_UNUSED_2 2
+#define FROMESP_WIFI_STATUS 3
+#define FROMESP_SERVER_STATUS 4
+#define FROMESP_UNUSED_3 5
+#define FROMESP_UNUSED_4 6
+#define FROMESP_GOT_MESSAGE 7
 
 sample_noirq_screen_send_msg:
 .(
@@ -145,10 +153,11 @@ sample_noirq_show_connection_state:
 		bpl wait_esp ;
 	.)               ;
 
+	lda $5000 ; Garbage byte
 	lda $5000 ; ESP message length (should be 3)
 	lda $5000 ; ESP message type (should be FROMESP_MSG_WIFI_STATUS)
 	lda $5000      ; Fetch ESP response
-	cmp #2              ;
+	cmp #3              ;
 	beq green           ;
 		lda #0          ;
 		jmp store_state ; Convert response to 0=bad, 1=good
@@ -169,6 +178,7 @@ sample_noirq_show_connection_state:
 		bpl wait_esp ;
 	.)               ;
 
+	lda $5000 ; Garbage byte
 	lda $5000 ; ESP message length (should be 3)
 	lda $5000 ; ESP message type (should be FROMESP_MSG_SERVER_STATUS)
 	lda $5000        ; Fetch ESP response
@@ -222,6 +232,7 @@ sample_noirq_receive_msg:
 	bpl end
 
 		; Burn ESP header
+		lda $5000 ; Gabage byte
 		lda $5000 ; message length
 		lda $5000 ; message type
 
