@@ -49,19 +49,27 @@ public:
 
 private:
 	// Defined message types from CPU to ESP
-	enum class message_id_t : uint8 {
-		MSG_NULL = 0x00,
-		MSG_DEBUG_LOG = 0x01,
-		MSG_GET_WIFI_STATUS = 0x02,
-		MSG_GET_SERVER_STATUS = 0x03,
-		MSG_SEND_MESSAGE = 0x04,
+	enum class n2e_cmds_t : uint8 {
+		UNUSED_0,
+		DEBUG_LOG,
+		CLEAR_BUFFERS,
+		GET_WIFI_STATUS,
+		GET_SERVER_STATUS,
+		CONNECT_TO_SERVER,
+		DISCONNECT_FROM_SERVER,
+		SEND_MESSAGE_TO_SERVER,
 	};
 
 	// Defined message types from ESP to CPU
-	enum class esp_message_id_t : uint8 {
-		MSG_WIFI_STATUS = 0x02,
-		MSG_SERVER_STATUS = 0x03,
-		MSG_GOT_MESSAGE = 0x04,
+	enum class e2n_cmds_t : uint8 {
+		UNUSED_0,
+		UNUSED_1,
+		UNUSED_2,
+		WIFI_STATUS,
+		SERVER_STATUS,
+		UNUSED_3,
+		UNUSED_4,
+		MESSAGE_FROM_SERVER,
 	};
 
 	void processBufferedMessage();
@@ -140,11 +148,11 @@ bool GlutockFirmware::getGpio15() {
 void GlutockFirmware::processBufferedMessage() {
 	if (this->rx_buffer.size() >= 2) {
 		// Process the message in RX buffer
-		switch (static_cast<message_id_t>(this->rx_buffer.at(1))) {
-			case message_id_t::MSG_NULL:
+		switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
+			case n2e_cmds_t::UNUSED_0:
 				UDBG("UNICORN GlutockFirmware received message NULL\n");
 				break;
-			case message_id_t::MSG_DEBUG_LOG:
+			case n2e_cmds_t::DEBUG_LOG:
 				#ifdef UNICORN_DBG
 					FCEU_printf("UNICORN DEBUG/LOG: ");
 					for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
@@ -153,19 +161,24 @@ void GlutockFirmware::processBufferedMessage() {
 					FCEU_printf("\n");
 				#endif
 				break;
-			case message_id_t::MSG_GET_WIFI_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
-				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(esp_message_id_t::MSG_WIFI_STATUS));
-				this->tx_buffer.push_back(2); // Simple answer, wifi is ok
+			case n2e_cmds_t::CLEAR_BUFFERS:
+				// TODO : clean tx / rx buffers
 				break;
-			case message_id_t::MSG_GET_SERVER_STATUS:
-				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+			case n2e_cmds_t::GET_WIFI_STATUS:
+				UDBG("UNICORN GlutockFirmware received message GET_WIFI_STATUS\n");
+				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(esp_message_id_t::MSG_SERVER_STATUS));
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::WIFI_STATUS));
+				this->tx_buffer.push_back(3); // Simple answer, wifi is ok
+				break;
+			case n2e_cmds_t::GET_SERVER_STATUS:
+				UDBG("UNICORN GlutockFirmware received message GET_SERVER_STATUS\n");
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(2);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
-			case message_id_t::MSG_SEND_MESSAGE: {
+			case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
 				UDBG("UNICORN GlutockFirmware received message SEND_MESSAGE\n");
 				uint8 const payload_size = this->rx_buffer.size() - 2;
 				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
@@ -218,8 +231,12 @@ void GlutockFirmware::receiveDataFromServer() {
 		size_t const msg_len = data.end() - data.begin();
 		if (msg_len <= 0xff) {
 			UDBG("UNICORN WebSocket data received...\n");
-			this->tx_buffer.push_back(static_cast<uint8>(msg_len));
-			//this->tx_buffer.push_back(static_cast<uint8>(esp_message_id_t::MSG_GOT_MESSAGE));
+			// add last received byte first to match hardware behavior
+			// it's more of a mapper thing though ...
+			// needs a dummy $5000 read when reading data from buffer
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER));
 			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
 		}
 	});
