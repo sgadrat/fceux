@@ -16,6 +16,7 @@
 "use strict"; // http://ejohn.org/blog/ecmascript-5-strict-mode-json-and-more/
 var WebSocketServer = require("ws").Server;
 var http = require("http");
+require("./flashed-rom.js");
 
 var server = http.createServer();
 var wss = new WebSocketServer({ server: server, path: "" });
@@ -35,6 +36,16 @@ wss.on("connection", function(ws) {
     }else if (data == "hello") {
       console.log("<<< world");
       ws.send("world");
+	}else if (data == "upgradeprg") {
+		for (var i = 0; i < flashed_prg_rom.length; ++i) {
+			console.log("<<< prg_rom["+ i +"]");
+			ws.send(flashed_prg_rom[i]);
+		}
+	}else if (data == "upgradechr") {
+		for (var i = 0; i < flashed_chr_rom.length; ++i) {
+			console.log("<<< chr_rom["+ i +"]");
+			ws.send(flashed_chr_rom[i]);
+		}
     }else {
       console.log("<<< what");
 	  ws.send("i agree with you");

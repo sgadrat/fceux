@@ -36,5 +36,5 @@ fceux-net-server
 config.log
 
 # unicorn specific
-unicorn-related-stuff/sample-rom/*.nes
-unicorn-related-stuff/sample-server/node_modules
+rainbow-related-stuff/sample-rom/*.nes
+rainbow-related-stuff/sample-server/node_modules

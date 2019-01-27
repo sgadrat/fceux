@@ -6,6 +6,7 @@ var webSocketsServerPort = 3000;
 // websocket and http servers
 var webSocketServer = require('websocket').server;
 var http = require('http');
+require("./flashed-rom.js");
 
 /**
  * Global variables
@@ -50,8 +51,20 @@ wsServer.on('request', function(request) {
 			console.log((new Date()) + ' Received Binary Message of ' + message.binaryData.length + ' bytes: ' + message.binaryData);
 
 			// Send back a message to the client
-			var buf = Buffer.alloc(19, "message from server");
-			clients[index].sendBytes(buf);
+			if (message.binaryData == "upgradeprg") {
+				for (var i = 0; i < flashed_prg_rom.length; ++i) {
+					console.log("send prg_rom["+ i +"]");
+					clients[index].sendBytes(Buffer.from(flashed_prg_rom[i]));
+				}
+			}else if (message.binaryData == "upgradechr") {
+				for (var i = 0; i < flashed_chr_rom.length; ++i) {
+					console.log("send chr_rom["+ i +"]");
+					clients[index].sendBytes(Buffer.from(flashed_chr_rom[i]));
+				}
+			}else {
+				var buf = Buffer.alloc(19, "message from server");
+				clients[index].sendBytes(buf);
+			}
 		}
 	});
 
