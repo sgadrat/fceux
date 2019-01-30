@@ -51,9 +51,10 @@ public:
 private:
 	// Defined message types from CPU to ESP
 	enum class n2e_cmds_t : uint8 {
-		UNUSED_0,
+		GET_ESP_STATUS,
 		DEBUG_LOG,
 		CLEAR_BUFFERS,
+		FILES,
 		GET_WIFI_STATUS,
 		GET_SERVER_STATUS,
 		CONNECT_TO_SERVER,
@@ -63,13 +64,11 @@ private:
 
 	// Defined message types from ESP to CPU
 	enum class e2n_cmds_t : uint8 {
-		UNUSED_0,
-		UNUSED_1,
-		UNUSED_2,
+		READY,
+		FILE_LIST,
+		FILE_DATA,
 		WIFI_STATUS,
 		SERVER_STATUS,
-		UNUSED_3,
-		UNUSED_4,
 		MESSAGE_FROM_SERVER,
 	};
 
@@ -150,8 +149,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 	if (this->rx_buffer.size() >= 2) {
 		// Process the message in RX buffer
 		switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
-			case n2e_cmds_t::UNUSED_0:
-				UDBG("RAINBOW BrokeStudioFirmware received message NULL\n");
+			case n2e_cmds_t::GET_ESP_STATUS:
+				UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS");
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(1);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::READY));
 				break;
 			case n2e_cmds_t::DEBUG_LOG:
 				#ifdef RAINBOW_DEBUG
@@ -164,6 +166,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				break;
 			case n2e_cmds_t::CLEAR_BUFFERS:
 				// TODO : clean tx / rx buffers
+				break;
+			case n2e_cmds_t::FILES:
+				// TODO
 				break;
 			case n2e_cmds_t::GET_WIFI_STATUS:
 				UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
@@ -178,6 +183,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->tx_buffer.push_back(2);
 				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+				break;
+			case n2e_cmds_t::CONNECT_TO_SERVER:
+				// TODO
+				break;
+			case n2e_cmds_t::DISCONNECT_FROM_SERVER:
+				// TODO
 				break;
 			case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
 				UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");

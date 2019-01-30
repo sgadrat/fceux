@@ -54,23 +54,22 @@ sample_irq_last_server_msg = $0400
 sample_irq_wifi_state = $10
 sample_irq_server_state = $11
 
-#define TOESP_MSG_NULL 0
+#define TOESP_MSG_GET_ESP_STATUS 0
 #define TOESP_MSG_DEBUG_LOG 1
 #define TOESP_MSG_CLEAR_BUFFERS 2
-#define TOESP_MSG_GET_WIFI_STATUS 3
-#define TOESP_MSG_GET_SERVER_STATUS 4
-#define TOESP_MSG_CONNECT_TO_SERVER 5
-#define TOESP_MSG_DISCONNECT_FROM_SERVER 6
-#define TOESP_MSG_SEND_MESSAGE 7
+#define TOESP_MSG_FILES 3
+#define TOESP_MSG_GET_WIFI_STATUS 4
+#define TOESP_MSG_GET_SERVER_STATUS 5
+#define TOESP_MSG_CONNECT_TO_SERVER 6
+#define TOESP_MSG_DISCONNECT_FROM_SERVER 7
+#define TOESP_MSG_SEND_MESSAGE_TO_SERVER 8
 
-#define FROMESP_UNUSED_0 0
-#define FROMESP_UNUSED_1 1
-#define FROMESP_UNUSED_2 2
-#define FROMESP_WIFI_STATUS 3
-#define FROMESP_SERVER_STATUS 4
-#define FROMESP_UNUSED_3 5
-#define FROMESP_UNUSED_4 6
-#define FROMESP_GOT_MESSAGE 7
+#define FROMESP_MSG_READY 0
+#define FROMESP_MSG_FILE_LIST 1
+#define FROMESP_MSG_FILE_DATA 2
+#define FROMESP_MSG_WIFI_STATUS 3
+#define FROMESP_MSG_SERVER_STATUS 4
+#define FROMESP_MSG_MESSAGE_FROM_SERVER 5
 
 sample_irq_process_irq:
 .(
@@ -158,18 +157,14 @@ sample_irq_process_irq:
 		.byt <dummy_routine
 		.byt <process_wifi_state
 		.byt <process_server_state
-		.byt <dummy_routine
-		.byt <dummy_routine
 		.byt <process_server_message
 
 	process_routines_msb:
 		.byt >dummy_routine
 		.byt >dummy_routine
-		.byt <dummy_routine
+		.byt >dummy_routine
 		.byt >process_wifi_state
 		.byt >process_server_state
-		.byt <dummy_routine
-		.byt <dummy_routine
 		.byt >process_server_message
 .)
 
@@ -219,8 +214,8 @@ sample_irq_screen_send_msg:
 	lda #15   ; Message length
 	sta $5000 ;
 
-	lda #TOESP_MSG_SEND_MESSAGE ; Message type - message for the server
-	sta $5000                   ;
+	lda #TOESP_MSG_SEND_MESSAGE_TO_SERVER ; Message type - message for the server
+	sta $5000                             ;
 
 	lda #$52  ;
 	sta $5000 ;
