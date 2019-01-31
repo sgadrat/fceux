@@ -3,8 +3,10 @@
 
 #include "easywsclient.hpp"
 
+#include <algorithm>
 #include <array>
 #include <deque>
+#include <limits>
 #include <sstream>
 
 using easywsclient::WebSocket;
@@ -72,7 +74,21 @@ private:
 		MESSAGE_FROM_SERVER,
 	};
 
+	enum class files_subcmd_t : uint8 {
+		SELECT,
+		GET_LIST,
+		DELETE,
+		READ,
+		READ_AUTO,
+		WRITE,
+		APPEND,
+	};
+
 	void processBufferedMessage();
+	void processFileMessage();
+	void readFile(uint8 file, uint8 n, uint32 offset);
+	template<class I>
+	void writeFile(uint8 file, uint32 offset, I data_begin, I data_end);
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
@@ -81,6 +97,11 @@ private:
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
+
+	std::array<std::vector<uint8>, 64> files;
+	std::array<bool, 64> file_exists;
+	uint32 file_offset = 0;
+	uint8 working_file = 0;
 
 	WebSocket::pointer socket = nullptr;
 
@@ -168,7 +189,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				// TODO : clean tx / rx buffers
 				break;
 			case n2e_cmds_t::FILES:
-				// TODO
+				this->processFileMessage();
 				break;
 			case n2e_cmds_t::GET_WIFI_STATUS:
 				UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
@@ -209,8 +230,137 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			message_size = this->rx_buffer.size();
 		}
 		this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
-
 	}
+}
+
+void BrokeStudioFirmware::processFileMessage() {
+	assert(this->rx_buffer.size() >= 2);
+	uint8 message_size = this->rx_buffer.front();
+	if (message_size >= 2 && this->rx_buffer.size() >= static_cast<std::deque<uint8>::size_type>(message_size) + 1) {
+		switch (static_cast<files_subcmd_t>(this->rx_buffer.at(2))) {
+			case files_subcmd_t::SELECT:
+				if (message_size == 3) {
+					uint8 const selected_file = this->rx_buffer.at(3);
+					if (selected_file < this->files.size()) {
+						this->working_file = selected_file;
+						this->file_offset = 0;
+					}
+				}
+				break;
+			case files_subcmd_t::GET_LIST:
+				{
+					UDBG("RAINBOW received FILES.GET_LIST\n");
+					std::vector<uint8> existing_files;
+					assert(this->file_exists.size() < 254);
+					for (uint8 i = 0; i < this->file_exists.size(); ++i) {
+						if (this->file_exists[i]) {
+							existing_files.push_back(i);
+						}
+					}
+					this->tx_buffer.push_back(last_byte_read);
+					this->tx_buffer.push_back(existing_files.size() + 2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
+					this->tx_buffer.push_back(existing_files.size());
+					for (uint8 i: existing_files) {
+						UDBG("RAINBOW => %02x\n", i);
+						this->tx_buffer.push_back(i);
+					}
+				}
+				break;
+			case files_subcmd_t::DELETE:
+				if (message_size == 3) {
+					uint8 file_index = this->rx_buffer[3];
+					if (file_index < this->files.size()) {
+						assert(file_index < this->file_exists.size());
+						this->files[file_index].clear();
+						this->file_exists[file_index] = false;
+					}
+				}
+				break;
+			case files_subcmd_t::READ:
+				if (message_size >= 4) {
+					uint8 n = this->rx_buffer[3];
+					uint32 offset = 0;
+					for (uint8 i = 4; i <= message_size; ++i) {
+						offset = (offset << 8) + i;
+					}
+					this->readFile(this->working_file, n, offset);
+				}
+				break;
+			case files_subcmd_t::READ_AUTO:
+				if (message_size >= 3) {
+					uint8 const n = this->rx_buffer[3];
+					this->readFile(this->working_file, n, this->file_offset);
+					this->file_offset += n;
+					if (this->file_offset > this->files[this->working_file].size()) {
+						this->file_offset = this->files[this->working_file].size();
+					}
+				}
+				break;
+			case files_subcmd_t::WRITE:
+				UDBG("RAINBOW write");
+				if (message_size >= 8 && this->rx_buffer[7] == message_size - 7) {
+					uint32 offset = this->rx_buffer[6];
+					offset = (offset << 8) + this->rx_buffer[5];
+					offset = (offset << 8) + this->rx_buffer[4];
+					offset = (offset << 8) + this->rx_buffer[3];
+
+					this->writeFile(this->working_file, offset, this->rx_buffer.begin() + 8, this->rx_buffer.begin() + message_size);
+				}
+				break;
+			case files_subcmd_t::APPEND:
+				if (message_size >= 4 && this->rx_buffer[3] == message_size - 3) {
+					this->writeFile(this->working_file, this->file_offset, this->rx_buffer.begin() + 4, this->rx_buffer.begin() + message_size);
+					this->file_offset += message_size - 3;
+				}
+				break;
+			default:
+				break;
+		};
+	}
+}
+
+void BrokeStudioFirmware::readFile(uint8 file, uint8 n, uint32 offset) {
+	assert(file < this->files.size());
+
+	// Get data range
+	std::vector<uint8> const& f = this->files[file];
+	std::vector<uint8>::const_iterator data_begin;
+	std::vector<uint8>::const_iterator data_end;
+	if (offset >= f.size()) {
+		data_begin = f.end();
+		data_end = data_begin;
+	}else {
+		data_begin = f.begin() + offset;
+		data_end = f.begin() + std::min(static_cast<std::vector<uint8>::size_type>(offset) + n, f.size());
+	}
+	std::vector<uint8>::size_type const data_size = data_end - data_begin;
+
+	// Write response
+	this->tx_buffer.push_back(last_byte_read);
+	this->tx_buffer.push_back(data_size + 2);
+	this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DATA));
+	this->tx_buffer.push_back(data_size);
+	while (data_begin != data_end) {
+		this->tx_buffer.push_back(*data_begin);
+		++data_begin;
+	}
+}
+
+template<class I>
+void BrokeStudioFirmware::writeFile(uint8 file, uint32 offset, I data_begin, I data_end) {
+	std::vector<uint8>& f = this->files[file];
+	auto const data_size = data_end - data_begin;
+	uint32 const offset_end = offset + data_size;
+	if (offset_end > f.size()) {
+		f.resize(offset_end, 0);
+	}
+
+	for (std::vector<uint8>::size_type i = offset; i < offset_end; ++i) {
+		f[i] = *data_begin;
+		++data_begin;
+	}
+	this->file_exists[file] = true;
 }
 
 template<class I>
