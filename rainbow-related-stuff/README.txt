@@ -3,6 +3,8 @@ Rainbow project
 
 The idea is to create a NES mapper capable of internet communication. The mapper would embed an ESP8266 to do so. The mapper allows the NES software to read and write on the ESP serial by reading or writing $5000. It is also possible to read bit 7 of $5001 to know if the ESP has something to send on the serial port.
 
+Official Raibow documentation is available here: https://hackmd.io/s/H1vBJKpX4
+
 This repository
 ===============
 
