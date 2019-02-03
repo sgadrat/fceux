@@ -186,7 +186,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				#endif
 				break;
 			case n2e_cmds_t::CLEAR_BUFFERS:
-				// TODO : clean tx / rx buffers
+				UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
+				this->tx_buffer.clear();
+				this->rx_buffer.clear();
 				break;
 			case n2e_cmds_t::FILES:
 				this->processFileMessage();
