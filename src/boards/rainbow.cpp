@@ -8,6 +8,7 @@
 #include <deque>
 #include <limits>
 #include <sstream>
+#include <thread>
 
 using easywsclient::WebSocket;
 
@@ -94,6 +95,9 @@ private:
 	void sendMessageToServer(I begin, I end);
 	void receiveDataFromServer();
 
+	void closeConnection();
+	void openConnection();
+
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
@@ -104,6 +108,7 @@ private:
 	uint8 working_file = 0;
 
 	WebSocket::pointer socket = nullptr;
+	std::thread socket_close_thread;
 
 	bool msg_first_byte = true;
 	uint8 msg_length = 0;
@@ -112,12 +117,7 @@ private:
 
 BrokeStudioFirmware::BrokeStudioFirmware() {
 	UDBG("RAINBOW BrokeStudioFirmware ctor\n");
-	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
-	if (!ws) {
-		UDBG("RAINBOW unable to connect to server");
-		return;
-	}
-	this->socket = ws;
+	this->openConnection();
 }
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
@@ -208,10 +208,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case n2e_cmds_t::CONNECT_TO_SERVER:
-				// TODO
+				UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
+				this->openConnection();
 				break;
 			case n2e_cmds_t::DISCONNECT_FROM_SERVER:
-				// TODO
+				UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
+				this->closeConnection();
 				break;
 			case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
 				UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
@@ -408,6 +410,44 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
 		}
 	});
+}
+
+void BrokeStudioFirmware::closeConnection() {
+	// Do nothing if connection is already closed
+	if (this->socket == nullptr) {
+		return;
+	}
+
+	// Gently ask for connection closing
+	if (this->socket->getReadyState() == WebSocket::OPEN) {
+		this->socket->close();
+	}
+
+	// Start a thread that waits for the connection to be closed, before deleting the socket
+	if (this->socket_close_thread.joinable()) {
+		this->socket_close_thread.join();
+	}
+	WebSocket::pointer ws = this->socket;
+	this->socket_close_thread = std::thread([ws] {
+		while (ws->getReadyState() != WebSocket::CLOSED) {
+			ws->poll(5);
+		}
+		delete ws;
+	});
+
+	// Forget about this connection
+	this->socket = nullptr;
+}
+
+void BrokeStudioFirmware::openConnection() {
+	this->closeConnection();
+
+	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
+	if (!ws) {
+		UDBG("RAINBOW unable to connect to server");
+		return;
+	}
+	this->socket = ws;
 }
 
 //////////////////////////////////////
