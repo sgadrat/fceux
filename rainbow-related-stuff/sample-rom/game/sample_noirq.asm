@@ -71,23 +71,6 @@ sample_noirq_screen_tick:
 	rts
 .)
 
-#define TOESP_MSG_GET_ESP_STATUS 0
-#define TOESP_MSG_DEBUG_LOG 1
-#define TOESP_MSG_CLEAR_BUFFERS 2
-#define TOESP_MSG_FILES 3
-#define TOESP_MSG_GET_WIFI_STATUS 4
-#define TOESP_MSG_GET_SERVER_STATUS 5
-#define TOESP_MSG_CONNECT_TO_SERVER 6
-#define TOESP_MSG_DISCONNECT_FROM_SERVER 7
-#define TOESP_MSG_SEND_MESSAGE_TO_SERVER 8
-
-#define FROMESP_MSG_READY 0
-#define FROMESP_MSG_FILE_LIST 1
-#define FROMESP_MSG_FILE_DATA 2
-#define FROMESP_MSG_WIFI_STATUS 3
-#define FROMESP_MSG_SERVER_STATUS 4
-#define FROMESP_MSG_MESSAGE_FROM_SERVER 5
-
 sample_noirq_screen_send_msg:
 .(
 	; Send unknown message, mapper should ignore it

@@ -20,6 +20,8 @@ VECTOR(sample_connection_screen_tick)
 #define GAME_STATE_FILES_SAMPLE 3
 #define GAME_STATE_CONNECTION_SAMPLE 4
 
+#include "game/rainbow_lib.asm"
+
 #include "game/sample_noirq.asm"
 #include "game/sample_irq.asm"
 #include "game/sample_flash.asm"

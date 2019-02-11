@@ -54,23 +54,6 @@ sample_irq_last_server_msg = $0400
 sample_irq_wifi_state = $10
 sample_irq_server_state = $11
 
-#define TOESP_MSG_GET_ESP_STATUS 0
-#define TOESP_MSG_DEBUG_LOG 1
-#define TOESP_MSG_CLEAR_BUFFERS 2
-#define TOESP_MSG_FILES 3
-#define TOESP_MSG_GET_WIFI_STATUS 4
-#define TOESP_MSG_GET_SERVER_STATUS 5
-#define TOESP_MSG_CONNECT_TO_SERVER 6
-#define TOESP_MSG_DISCONNECT_FROM_SERVER 7
-#define TOESP_MSG_SEND_MESSAGE_TO_SERVER 8
-
-#define FROMESP_MSG_READY 0
-#define FROMESP_MSG_FILE_LIST 1
-#define FROMESP_MSG_FILE_DATA 2
-#define FROMESP_MSG_WIFI_STATUS 3
-#define FROMESP_MSG_SERVER_STATUS 4
-#define FROMESP_MSG_MESSAGE_FROM_SERVER 5
-
 sample_irq_process_irq:
 .(
 	.(
@@ -155,11 +138,13 @@ sample_irq_process_irq:
 		.byt <dummy_routine
 		.byt <dummy_routine
 		.byt <dummy_routine
+		.byt <dummy_routine
 		.byt <process_wifi_state
 		.byt <process_server_state
 		.byt <process_server_message
 
 	process_routines_msb:
+		.byt >dummy_routine
 		.byt >dummy_routine
 		.byt >dummy_routine
 		.byt >dummy_routine

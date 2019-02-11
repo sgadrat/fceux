@@ -40,6 +40,9 @@ public:
 //////////////////////////////////////
 // BrokeStudio's ESP firmware implementation
 
+static uint8 const NO_WORKING_FILE = 0xff;
+static uint8 const NUM_FILE_PATHS = 3;
+
 class BrokeStudioFirmware: public EspFirmware {
 public:
 	BrokeStudioFirmware();
@@ -57,17 +60,26 @@ private:
 		GET_ESP_STATUS,
 		DEBUG_LOG,
 		CLEAR_BUFFERS,
-		FILES,
 		GET_WIFI_STATUS,
 		GET_SERVER_STATUS,
 		CONNECT_TO_SERVER,
 		DISCONNECT_FROM_SERVER,
 		SEND_MESSAGE_TO_SERVER,
+		FILE_OPEN,
+		FILE_CLOSE,
+		FILE_EXISTS,
+		FILE_DELETE,
+		FILE_SET_CUR,
+		FILE_READ,
+		FILE_WRITE,
+		FILE_APPEND,
+		GET_FILE_LIST,
 	};
 
 	// Defined message types from ESP to CPU
 	enum class e2n_cmds_t : uint8 {
 		READY,
+		FILE_EXISTS,
 		FILE_LIST,
 		FILE_DATA,
 		WIFI_STATUS,
@@ -75,21 +87,11 @@ private:
 		MESSAGE_FROM_SERVER,
 	};
 
-	enum class files_subcmd_t : uint8 {
-		SELECT,
-		GET_LIST,
-		DELETE,
-		READ,
-		READ_AUTO,
-		WRITE,
-		APPEND,
-	};
-
 	void processBufferedMessage();
 	void processFileMessage();
-	void readFile(uint8 file, uint8 n, uint32 offset);
+	void readFile(uint8 path, uint8 file, uint8 n, uint32 offset);
 	template<class I>
-	void writeFile(uint8 file, uint32 offset, I data_begin, I data_end);
+	void writeFile(uint8 path, uint8 file, uint32 offset, I data_begin, I data_end);
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
@@ -102,10 +104,11 @@ private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
 
-	std::array<std::vector<uint8>, 64> files;
-	std::array<bool, 64> file_exists;
+	std::array<std::array<std::vector<uint8>, 64>, NUM_FILE_PATHS> files;
+	std::array<std::array<bool, 64>, NUM_FILE_PATHS> file_exists;
 	uint32 file_offset = 0;
-	uint8 working_file = 0;
+	uint8 working_path = 0;
+	uint8 working_file = NO_WORKING_FILE;
 
 	WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;
@@ -136,7 +139,7 @@ void BrokeStudioFirmware::rx(uint8 v) {
 	}
 	this->rx_buffer.push_back(v);
 
-	if (this->rx_buffer.size() == msg_length) {
+	if (this->rx_buffer.size() == this->msg_length) {
 		this->processBufferedMessage();
 		this->msg_first_byte = true;
 	}
@@ -167,168 +170,176 @@ bool BrokeStudioFirmware::getGpio15() {
 }
 
 void BrokeStudioFirmware::processBufferedMessage() {
-	if (this->rx_buffer.size() >= 2) {
-		// Process the message in RX buffer
-		switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
-			case n2e_cmds_t::GET_ESP_STATUS:
-				UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS");
-				this->tx_buffer.push_back(last_byte_read);
-				this->tx_buffer.push_back(1);
-				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::READY));
-				break;
-			case n2e_cmds_t::DEBUG_LOG:
-				#ifdef RAINBOW_DEBUG
-					FCEU_printf("RAINBOW DEBUG/LOG: ");
-					for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
-						FCEU_printf("%02x ", *cur);
-					}
-					FCEU_printf("\n");
-				#endif
-				break;
-			case n2e_cmds_t::CLEAR_BUFFERS:
-				UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
-				this->tx_buffer.clear();
-				this->rx_buffer.clear();
-				break;
-			case n2e_cmds_t::FILES:
-				this->processFileMessage();
-				break;
-			case n2e_cmds_t::GET_WIFI_STATUS:
-				UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
-				this->tx_buffer.push_back(last_byte_read);
-				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::WIFI_STATUS));
-				this->tx_buffer.push_back(3); // Simple answer, wifi is ok
-				break;
-			case n2e_cmds_t::GET_SERVER_STATUS:
-				UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_STATUS\n");
-				this->tx_buffer.push_back(last_byte_read);
-				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
-				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
-				break;
-			case n2e_cmds_t::CONNECT_TO_SERVER:
-				UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
-				this->openConnection();
-				break;
-			case n2e_cmds_t::DISCONNECT_FROM_SERVER:
-				UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
-				this->closeConnection();
-				break;
-			case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
-				UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
-				uint8 const payload_size = this->rx_buffer.size() - 2;
-				std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
-				std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
-				this->sendMessageToServer(payload_begin, payload_end);
-				break;
-			}
-			default:
-				UDBG("RAINBOW BrokeStudioFirmware received unknown message %02x\n", this->rx_buffer.at(1));
-				break;
-		};
+	assert(this->rx_buffer.size() >= 2); // Buffer must conatain exactly one message, minimal message is two bytes (length + type)
+	uint8 const message_size = this->rx_buffer.front();
+	assert(message_size >= 1); // minimal payload is one byte (type)
+	assert(this->rx_buffer.size() == static_cast<std::deque<uint8>::size_type>(message_size) + 1); // Buffer size must match declared payload size
 
-		// Remove processed message
-		std::deque<uint8>::size_type message_size = this->rx_buffer.front() + 1;
-		if (message_size > this->rx_buffer.size()) {
-			message_size = this->rx_buffer.size();
+	// Process the message in RX buffer
+	switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
+		case n2e_cmds_t::GET_ESP_STATUS:
+			UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(1);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::READY));
+			break;
+		case n2e_cmds_t::DEBUG_LOG:
+			#ifdef RAINBOW_DEBUG
+				FCEU_printf("RAINBOW DEBUG/LOG: ");
+				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
+					FCEU_printf("%02x ", *cur);
+				}
+				FCEU_printf("\n");
+			#endif
+			break;
+		case n2e_cmds_t::CLEAR_BUFFERS:
+			UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
+			this->tx_buffer.clear();
+			this->rx_buffer.clear();
+			break;
+		case n2e_cmds_t::GET_WIFI_STATUS:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(2);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::WIFI_STATUS));
+			this->tx_buffer.push_back(3); // Simple answer, wifi is ok
+			break;
+		case n2e_cmds_t::GET_SERVER_STATUS:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_STATUS\n");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(2);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
+			this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+			break;
+		case n2e_cmds_t::CONNECT_TO_SERVER:
+			UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
+			this->openConnection();
+			break;
+		case n2e_cmds_t::DISCONNECT_FROM_SERVER:
+			UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
+			this->closeConnection();
+			break;
+		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
+			uint8 const payload_size = this->rx_buffer.size() - 2;
+			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
+			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
+			this->sendMessageToServer(payload_begin, payload_end);
+			break;
 		}
-		this->rx_buffer.erase(this->rx_buffer.begin(), this->rx_buffer.begin() + message_size);
-	}
-}
-
-void BrokeStudioFirmware::processFileMessage() {
-	assert(this->rx_buffer.size() >= 2);
-	uint8 message_size = this->rx_buffer.front();
-	if (message_size >= 2 && this->rx_buffer.size() >= static_cast<std::deque<uint8>::size_type>(message_size) + 1) {
-		switch (static_cast<files_subcmd_t>(this->rx_buffer.at(2))) {
-			case files_subcmd_t::SELECT:
-				if (message_size == 3) {
-					uint8 const selected_file = this->rx_buffer.at(3);
-					if (selected_file < this->files.size()) {
-						this->working_file = selected_file;
-						this->file_offset = 0;
-					}
+		case n2e_cmds_t::FILE_OPEN:
+			if (message_size == 3) {
+				uint8 const selected_path = this->rx_buffer.at(2);
+				uint8 const selected_file = this->rx_buffer.at(3);
+				if (selected_path < this->files.size() && selected_file < this->files[selected_path].size()) {
+					this->working_path = selected_path;
+					this->working_file = selected_file;
+					this->file_offset = 0;
+					this->file_exists[selected_path][selected_file] = true;
 				}
-				break;
-			case files_subcmd_t::GET_LIST:
-				{
-					UDBG("RAINBOW received FILES.GET_LIST\n");
-					std::vector<uint8> existing_files;
-					assert(this->file_exists.size() < 254);
-					for (uint8 i = 0; i < this->file_exists.size(); ++i) {
-						if (this->file_exists[i]) {
-							existing_files.push_back(i);
-						}
-					}
+			}
+			break;
+		case n2e_cmds_t::FILE_CLOSE:
+			this->working_file = NO_WORKING_FILE;
+			break;
+		case n2e_cmds_t::FILE_EXISTS:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_EXISTS\n");
+			if (message_size == 3) {
+				uint8 const path = this->rx_buffer.at(2);
+				uint8 const file = this->rx_buffer.at(3);
+				if (path < this->files.size() && file < this->files[path].size()) {
 					this->tx_buffer.push_back(last_byte_read);
-					this->tx_buffer.push_back(existing_files.size() + 2);
-					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
-					this->tx_buffer.push_back(existing_files.size());
-					for (uint8 i: existing_files) {
-						UDBG("RAINBOW => %02x\n", i);
-						this->tx_buffer.push_back(i);
-					}
+					this->tx_buffer.push_back(2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_EXISTS));
+					this->tx_buffer.push_back(this->file_exists[path][file] ? 1 : 0);
 				}
-				break;
-			case files_subcmd_t::DELETE:
-				if (message_size == 3) {
-					uint8 file_index = this->rx_buffer[3];
-					if (file_index < this->files.size()) {
-						assert(file_index < this->file_exists.size());
-						this->files[file_index].clear();
-						this->file_exists[file_index] = false;
-					}
+			}
+			break;
+		case n2e_cmds_t::FILE_DELETE:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_DELETE\n");
+			if (message_size == 3) {
+				uint8 const path = this->rx_buffer.at(2);
+				uint8 const file = this->rx_buffer.at(3);
+				if (path < this->files.size() && file < this->files[path].size()) {
+					this->files[path][file].clear();
+					this->file_exists[path][file] = false;
 				}
-				break;
-			case files_subcmd_t::READ:
-				if (message_size >= 4) {
-					uint8 n = this->rx_buffer[3];
-					uint32 offset = 0;
-					for (uint8 i = 4; i <= message_size; ++i) {
-						offset = (offset << 8) + i;
-					}
-					this->readFile(this->working_file, n, offset);
-				}
-				break;
-			case files_subcmd_t::READ_AUTO:
-				if (message_size >= 3) {
-					uint8 const n = this->rx_buffer[3];
-					this->readFile(this->working_file, n, this->file_offset);
+			}
+			break;
+		case n2e_cmds_t::FILE_SET_CUR:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_SET_CUR\n");
+			if (2 <= message_size && message_size <= 5) {
+				this->file_offset = this->rx_buffer[2];
+				this->file_offset += static_cast<uint32>(message_size >= 3 ? this->rx_buffer[3] : 0) << 8;
+				this->file_offset += static_cast<uint32>(message_size >= 4 ? this->rx_buffer[4] : 0) << 16;
+				this->file_offset += static_cast<uint32>(message_size >= 5 ? this->rx_buffer[5] : 0) << 24;
+			}
+			break;
+		case n2e_cmds_t::FILE_READ:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_READ\n");
+			if (message_size == 2) {
+				if (this->working_file != NO_WORKING_FILE) {
+					uint8 const n = this->rx_buffer[2];
+					this->readFile(this->working_path, this->working_file, n, this->file_offset);
 					this->file_offset += n;
 					if (this->file_offset > this->files[this->working_file].size()) {
 						this->file_offset = this->files[this->working_file].size();
 					}
+				}else {
+					this->tx_buffer.insert(this->tx_buffer.end(), {last_byte_read, 2, static_cast<uint8>(e2n_cmds_t::FILE_DATA), 0});
 				}
-				break;
-			case files_subcmd_t::WRITE:
-				UDBG("RAINBOW write");
-				if (message_size >= 8 && this->rx_buffer[7] == message_size - 7) {
-					uint32 offset = this->rx_buffer[6];
-					offset = (offset << 8) + this->rx_buffer[5];
-					offset = (offset << 8) + this->rx_buffer[4];
-					offset = (offset << 8) + this->rx_buffer[3];
+			}
+			break;
+		case n2e_cmds_t::FILE_WRITE:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_WRITE\n");
+			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
+				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size);
+				this->file_offset += message_size - 2;
+			}
+			break;
+		case n2e_cmds_t::FILE_APPEND:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_APPEND\n");
+			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
+				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size);
+			}
+			break;
+		case n2e_cmds_t::GET_FILE_LIST:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_FILE_LIST\n");
+			if (message_size == 2) {
+				UDBG("RAINBOW received FILES.GET_LIST\n");
+				std::vector<uint8> existing_files;
+				uint8 const path = this->rx_buffer[2];
+				assert(this->file_exists[path].size() < 254);
+				for (uint8 i = 0; i < this->file_exists[path].size(); ++i) {
+					if (this->file_exists[path][i]) {
+						existing_files.push_back(i);
+					}
+				}
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(existing_files.size() + 2);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
+				this->tx_buffer.push_back(existing_files.size());
+				for (uint8 i: existing_files) {
+					UDBG("RAINBOW => %02x\n", i);
+					this->tx_buffer.push_back(i);
+				}
+			}
+			break;
+		default:
+			UDBG("RAINBOW BrokeStudioFirmware received unknown message %02x\n", this->rx_buffer.at(1));
+			break;
+	};
 
-					this->writeFile(this->working_file, offset, this->rx_buffer.begin() + 8, this->rx_buffer.begin() + message_size);
-				}
-				break;
-			case files_subcmd_t::APPEND:
-				if (message_size >= 4 && this->rx_buffer[3] == message_size - 3) {
-					this->writeFile(this->working_file, this->file_offset, this->rx_buffer.begin() + 4, this->rx_buffer.begin() + message_size);
-					this->file_offset += message_size - 3;
-				}
-				break;
-			default:
-				break;
-		};
-	}
+	// Remove processed message
+	this->rx_buffer.clear();
 }
 
-void BrokeStudioFirmware::readFile(uint8 file, uint8 n, uint32 offset) {
-	assert(file < this->files.size());
+void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offset) {
+	assert(path < NUM_FILE_PATHS);
+	assert(file < this->files[path].size());
 
 	// Get data range
-	std::vector<uint8> const& f = this->files[file];
+	std::vector<uint8> const& f = this->files[path][file];
 	std::vector<uint8>::const_iterator data_begin;
 	std::vector<uint8>::const_iterator data_end;
 	if (offset >= f.size()) {
@@ -352,8 +363,8 @@ void BrokeStudioFirmware::readFile(uint8 file, uint8 n, uint32 offset) {
 }
 
 template<class I>
-void BrokeStudioFirmware::writeFile(uint8 file, uint32 offset, I data_begin, I data_end) {
-	std::vector<uint8>& f = this->files[file];
+void BrokeStudioFirmware::writeFile(uint8 path, uint8 file, uint32 offset, I data_begin, I data_end) {
+	std::vector<uint8>& f = this->files[path][file];
 	auto const data_size = data_end - data_begin;
 	uint32 const offset_end = offset + data_size;
 	if (offset_end > f.size()) {
@@ -364,7 +375,7 @@ void BrokeStudioFirmware::writeFile(uint8 file, uint32 offset, I data_begin, I d
 		f[i] = *data_begin;
 		++data_begin;
 	}
-	this->file_exists[file] = true;
+	this->file_exists[path][file] = true;
 }
 
 template<class I>

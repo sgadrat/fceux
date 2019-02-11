@@ -49,28 +49,6 @@ nametable_attributes:
 .byt ZIPNT_END
 .)
 
-#define TOESP_MSG_GET_ESP_STATUS 0
-#define TOESP_MSG_DEBUG_LOG 1
-#define TOESP_MSG_CLEAR_BUFFERS 2
-#define TOESP_MSG_FILES 3
-#define TOESP_MSG_GET_WIFI_STATUS 4
-#define TOESP_MSG_GET_SERVER_STATUS 5
-#define TOESP_MSG_CONNECT_TO_SERVER 6
-#define TOESP_MSG_DISCONNECT_FROM_SERVER 7
-#define TOESP_MSG_SEND_MESSAGE_TO_SERVER 8
-
-#define TOESP_MSG_FILES_SELECT 0
-#define TOESP_MSG_FILES_GET_LIST 1
-#define TOESP_MSG_FILES_READ_AUTO 4
-#define TOESP_MSG_FILES_WRITE 5
-
-#define FROMESP_MSG_READY 0
-#define FROMESP_MSG_FILE_LIST 1
-#define FROMESP_MSG_FILE_DATA 2
-#define FROMESP_MSG_WIFI_STATUS 3
-#define FROMESP_MSG_SERVER_STATUS 4
-#define FROMESP_MSG_MESSAGE_FROM_SERVER 5
-
 sample_files_screen_tick:
 .(
 	.(
@@ -105,9 +83,9 @@ sample_files_screen_tick:
 		; Ask ESP about existing files
 		lda #2
 		sta $5000
-		lda #TOESP_MSG_FILES
+		lda #TOESP_MSG_GET_FILE_LIST
 		sta $5000
-		lda #TOESP_MSG_FILES_GET_LIST
+		lda #ESP_FILE_PATH_USER
 		sta $5000
 
 		; Wait ESP response
@@ -156,19 +134,17 @@ sample_files_screen_tick:
 			; Select file
 			lda #3
 			sta $5000
-			lda #TOESP_MSG_FILES
+			lda #TOESP_MSG_FILE_OPEN
 			sta $5000
-			lda #TOESP_MSG_FILES_SELECT
+			lda #ESP_FILE_PATH_USER
 			sta $5000
 			lda cur_file
 			sta $5000
 
 			; Read file
-			lda #3
+			lda #2
 			sta $5000
-			lda #TOESP_MSG_FILES
-			sta $5000
-			lda #TOESP_MSG_FILES_READ_AUTO
+			lda #TOESP_MSG_FILE_READ
 			sta $5000
 			lda #3
 			sta $5000
@@ -244,25 +220,18 @@ sample_files_screen_tick:
 		; Select file
 		lda #3
 		sta $5000
-		lda #TOESP_MSG_FILES
+		lda #TOESP_MSG_FILE_OPEN
 		sta $5000
-		lda #TOESP_MSG_FILES_SELECT
+		lda #ESP_FILE_PATH_USER
 		sta $5000
 		lda #2
 		sta $5000
 
 		; Write data in file
-		lda #10
+		lda #5
 		sta $5000 ; Message length
-		lda #TOESP_MSG_FILES
+		lda #TOESP_MSG_FILE_WRITE
 		sta $5000 ; Command
-		lda #TOESP_MSG_FILES_WRITE
-		sta $5000 ; Subcommand
-		lda #$00
-		sta $5000 ; Offset
-		sta $5000 ; Offset
-		sta $5000 ; Offset
-		sta $5000 ; Offset
 		lda #3
 		sta $5000 ; Data length
 		lda #$1d
