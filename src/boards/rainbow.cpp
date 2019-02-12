@@ -2,11 +2,14 @@
 #include "../ines.h"
 
 #include "easywsclient.hpp"
+#include "mongoose.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <deque>
 #include <limits>
+#include <regex>
 #include <sstream>
 #include <thread>
 
@@ -100,6 +103,11 @@ private:
 	void closeConnection();
 	void openConnection();
 
+	static std::string pathStrFromIndex(uint8 path, uint8 file);
+	static std::pair<uint8, uint8> pathIndexFromStr(std::string const&);
+
+	static void httpdEvent(mg_connection *nc, int ev, void *ev_data);
+
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
@@ -113,6 +121,11 @@ private:
 	WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;
 
+	mg_mgr mgr;
+	mg_connection *nc = nullptr;
+	std::atomic<bool> httpd_run;
+	std::thread httpd_thread;
+
 	bool msg_first_byte = true;
 	uint8 msg_length = 0;
 	uint8 last_byte_read = 0;
@@ -120,7 +133,27 @@ private:
 
 BrokeStudioFirmware::BrokeStudioFirmware() {
 	UDBG("RAINBOW BrokeStudioFirmware ctor\n");
+
+	// Start websocket client
 	this->openConnection();
+
+	// Start web server
+	this->httpd_run = true;
+	char const * const httpd_port = "8080";
+	mg_mgr_init(&this->mgr, reinterpret_cast<void*>(this));
+	UDBG("Starting web server on port %s\n", httpd_port);
+	this->nc = mg_bind(&this->mgr, httpd_port, BrokeStudioFirmware::httpdEvent);
+	if (this->nc == NULL) {
+		printf("Failed to create web server\n");
+	}else {
+		mg_set_protocol_http_websocket(this->nc);
+		this->httpd_thread = std::thread([this] {
+			while (this->httpd_run) {
+				mg_mgr_poll(&this->mgr, 1000);
+			}
+			mg_mgr_free(&this->mgr);
+		});
+	}
 }
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
@@ -128,6 +161,11 @@ BrokeStudioFirmware::~BrokeStudioFirmware() {
 	if (this->socket != nullptr) {
 		delete this->socket;
 		this->socket = nullptr;
+	}
+
+	this->httpd_run = false;
+	if (this->httpd_thread.joinable()) {
+		this->httpd_thread.join();
 	}
 }
 
@@ -293,14 +331,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case n2e_cmds_t::FILE_WRITE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_WRITE\n");
 			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
-				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size);
+				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
 				this->file_offset += message_size - 2;
 			}
 			break;
 		case n2e_cmds_t::FILE_APPEND:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_APPEND\n");
 			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
-				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size);
+				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
 			}
 			break;
 		case n2e_cmds_t::GET_FILE_LIST:
@@ -459,6 +497,241 @@ void BrokeStudioFirmware::openConnection() {
 		return;
 	}
 	this->socket = ws;
+}
+
+std::string BrokeStudioFirmware::pathStrFromIndex(uint8 path, uint8 file) {
+	assert(path < NUM_FILE_PATHS);
+	std::string const dir_names[NUM_FILE_PATHS] = {"SAVE", "ROMS", "USER"};
+	std::ostringstream oss;
+	oss << dir_names[path] << "/file" << static_cast<uint16>(file) << ".bin";
+	return oss.str();
+}
+
+std::pair<uint8, uint8> BrokeStudioFirmware::pathIndexFromStr(std::string const& name) {
+	static std::regex const file_path_regex("/?(SAVE|ROMS|USER)/file([0-9]+).bin");
+	std::smatch match;
+	if (std::regex_match(name, match, file_path_regex)) {
+		assert(match.size() == 3);
+		uint8 path = 0;
+		if (match[1] == "ROMS") {
+			path = 1;
+		}else if (match[1] == "USER") {
+			path = 2;
+		}
+		std::istringstream iss(match[2]);
+		unsigned int file;
+		iss >> file;
+		if (file <= 0xff) {
+			return std::pair<uint8, uint8>(path, file);
+		}
+	}
+	return std::pair<uint8, uint8>(0, NO_WORKING_FILE);
+}
+
+void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
+	BrokeStudioFirmware* self = reinterpret_cast<BrokeStudioFirmware*>(nc->mgr->user_data);
+	auto send_message = [&] (int status_code, char const * body, char const * mime) {
+		std::string header = std::string("Content-Type: ") + mime + "\r\nConnection: close\r\n";
+		mg_send_response_line(nc, status_code, header.c_str());
+		mg_printf(nc, body);
+		nc->flags |= MG_F_SEND_AND_CLOSE;
+	};
+	auto send_generic_error = [&] {
+		send_message(400, "<html><body><h1>Error</h1></body><html>\n", "text/html");
+	};
+	if (ev == MG_EV_HTTP_REQUEST) {
+		UDBG("http request event \n");
+		struct http_message *hm = (struct http_message *) ev_data;
+		UDBG("  uri: %.*s\n", hm->uri.len, hm->uri.p);
+		if (strncmp("/api/file/list", hm->uri.p, hm->uri.len) == 0) {
+			char path[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
+			if (path_len <= 0) {
+				send_generic_error();
+				return;
+			}
+			mg_send_response_line(nc, 200, "Content-Type: application/json\r\nConnection: close\r\n");
+			mg_printf(nc, "[\n");
+			int id = 0;
+			for (uint8_t file_path = 0; file_path < NUM_FILE_PATHS; ++file_path) {
+				for (int file_index = 0; file_index < self->file_exists[file_path].size(); ++file_index) {
+					if (self->file_exists[file_path][file_index]) {
+						mg_printf(nc, "  {\"id\":\"%d\",\"name\":\"%s\",\"size\":\"%d\"}\n", id, BrokeStudioFirmware::pathStrFromIndex(file_path, file_index).c_str(), static_cast<int>(self->files[file_path][file_index].size()));
+					}
+				}
+			}
+			mg_printf(nc, "]\n");
+			nc->flags |= MG_F_SEND_AND_CLOSE;
+		}else if (strncmp("/api/file/delete", hm->uri.p, hm->uri.len) == 0) {
+			char filename[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
+			if (path_len <= 0) {
+				send_generic_error();
+				return;
+			}
+			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
+			if (path.second == NO_WORKING_FILE || !self->file_exists[path.first][path.second]) {
+				send_message(200, "{\"success\":\"false\"}\n", "application/json");
+			}else {
+				self->file_exists[path.first][path.second] = false;
+				self->files[path.first][path.second].clear();
+				send_message(200, "{\"success\":\"true\"}\n", "application/json");
+			}
+		}else if (strncmp("/api/file/rename", hm->uri.p, hm->uri.len) == 0) {
+			char filename[256];
+			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
+			if (filename_len <= 0) {
+				send_generic_error();
+				return;
+			}
+			char new_filename[256];
+			int const new_filename_len = mg_get_http_var(&hm->query_string, "newFilename", new_filename, 256);
+			if (new_filename_len <= 0) {
+				send_generic_error();
+				return;
+			}
+
+			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
+			std::pair<uint8, uint8> new_path = BrokeStudioFirmware::pathIndexFromStr(new_filename);
+			if (path.first >= NUM_FILE_PATHS || new_path.first >= NUM_FILE_PATHS || path.second >= 64 || new_path.second >= 64) {
+				send_message(200, "{\"success\":\"false\"}\n", "application/json");
+				return;
+			}
+
+			self->files[new_path.first][new_path.second] = self->files[path.first][path.second];
+			self->file_exists[new_path.first][new_path.second] = self->file_exists[path.first][path.second];
+			self->file_exists[path.first][path.second] = false;
+			self->files[path.first][path.second].clear();
+
+			send_message(200, "{\"success\":\"true\"}\n", "application/json");
+		}else if (strncmp("/api/file/download", hm->uri.p, hm->uri.len) == 0) {
+			char filename[256];
+			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
+			if (filename_len <= 0) {
+				send_generic_error();
+				return;
+			}
+			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
+
+			if (path.first >= NUM_FILE_PATHS || path.second >= 64 || !self->file_exists[path.first][path.second]) {
+				send_generic_error();
+				return;
+			}
+			mg_send_response_line(
+				nc, 200,
+				"Content-Type: application/octet-stream\r\n"
+				"Connection: close\r\n"
+			);
+			mg_send(nc, self->files[path.first][path.second].data(), self->files[path.first][path.second].size());
+			nc->flags |= MG_F_SEND_AND_CLOSE;
+		}else if (strncmp("/api/file/upload", hm->uri.p, hm->uri.len) == 0) {
+			// Get boundary for multipart form in HTTP headers
+			std::string multipart_boundary;
+			{
+				mg_str const * content_type = mg_get_http_header(hm, "Content-Type");
+				if (content_type == NULL) {
+					send_generic_error();
+					return;
+				}
+				static std::regex const content_type_regex("multipart/form-data; boundary=(.*)");
+				std::smatch match;
+				std::string content_type_str(content_type->p, content_type->len);
+				if (!std::regex_match(content_type_str, match, content_type_regex)) {
+					send_generic_error();
+					return;
+				}
+				assert(match.size() == 2);
+				multipart_boundary = match[1];
+			}
+
+			// Parse form parts
+			std::map<std::string, std::string> params;
+			{
+				std::string body_str(hm->body.p, hm->body.len);
+				std::string::size_type pos = 0;
+				while (pos != std::string::npos) {
+					// Find the parameter name
+					std::string::size_type found_pos = body_str.find("form-data; name=\"", pos);
+					if (found_pos == std::string::npos) {
+						break;
+					}
+					pos = found_pos + 17;
+					found_pos = body_str.find('"', pos);
+					if (found_pos == std::string::npos) {
+						break;
+					}
+					std::string const param_name = body_str.substr(pos, found_pos - pos);
+					pos = found_pos;
+
+					// Find the begining of the body
+					found_pos = body_str.find("\r\n\r\n", pos);
+					if (found_pos == std::string::npos) {
+						break;
+					}
+					pos = found_pos + 4;
+
+					// Find the begining of the next delimiter
+					found_pos = body_str.find("\r\n--" + multipart_boundary, pos);
+					if (found_pos == std::string::npos) {
+						break;
+					}
+					std::string const param_value = body_str.substr(pos, found_pos - pos);
+					pos = found_pos;
+
+					// Store parsed parameter
+					params[param_name] = param_value;
+				}
+			}
+
+			// Process request
+			std::map<std::string, std::string>::const_iterator file_data = params.find("file");
+			std::map<std::string, std::string>::const_iterator filename = params.find("path");
+			if (file_data == params.end() || filename == params.end()) {
+				send_generic_error();
+				return;
+			}
+			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename->second);
+			if (path.second == NO_WORKING_FILE) {
+				send_generic_error();
+				return;
+			}
+			self->files[path.first][path.second] = std::vector<uint8>(file_data->second.begin(), file_data->second.end());
+			self->file_exists[path.first][path.second] = true;
+
+			// Return something webbrowser friendly
+			send_message(200, "<html><body><p>Upload success</p></body></html>\n", "text/html");
+		}else if (strncmp("/index.html", hm->uri.p, hm->uri.len) == 0) {
+			send_message(
+				200,
+				R"-(<html><body><form action="/api/file/upload" method="post" enctype="multipart/form-data"><input name="file" type="file"><br /><input name="path" type="text" value="/USER/file10.bin"><br /><button type="submit">Upload</button></form></body></html>)-",
+				"text/html"
+			);
+		}else {
+			mg_send_response_line(
+				nc, 200,
+				"Content-Type: text/html\r\n"
+				"Connection: close\r\n"
+			);
+			mg_printf(
+				nc,
+				"<html><body>\n"
+				"<h1>Hello!</h1>\n"
+				"<p>Server connection is %s</p>\n"
+				"<p>method: %.*s</p>\n"
+				"<p>uri: %.*s</p>\n"
+				"<p>query: %.*s</p>\n"
+				"<p>body:</p>\n"
+				"<pre>%.*s</pre>\n"
+				"</body></html>\n",
+				self->socket != nullptr ? "good" : "bad",
+				(int)hm->method.len, hm->method.p,
+				(int)hm->uri.len, hm->uri.p,
+				(int)hm->query_string.len, hm->query_string.p,
+				(int)hm->body.len, hm->body.p
+			);
+			nc->flags |= MG_F_SEND_AND_CLOSE;
+		}
+	}
 }
 
 //////////////////////////////////////
