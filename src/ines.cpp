@@ -724,6 +724,7 @@ static BMAPPINGLocal bmap[] = {
 	{"810544-CA-1",		    261, BMC810544CA1_Init},
 
 	{"RAINBOW",            3840, RAINBOW_Init},
+	{"RAINBOW512",         3870, RAINBOW512_Init},
 
 	{"",					0, NULL}
 };
