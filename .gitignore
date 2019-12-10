@@ -37,4 +37,5 @@ config.log
 
 # unicorn specific
 rainbow-related-stuff/sample-rom/*.nes
+rainbow-related-stuff/sample-rom-512/*.nes
 rainbow-related-stuff/sample-server/node_modules

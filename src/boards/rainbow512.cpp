@@ -186,6 +186,8 @@ static DECLFR(UNROM512LatchRead)
 }
 
 static void UNROM512LatchPower(void) {
+	UDBG("Rainbow512 power\n");
+
 	latche = latcheinit;
 	WHSync();
 	SetReadHandler(0x8000, 0xFFFF, UNROM512LatchRead);
@@ -208,6 +210,7 @@ static void UNROM512LatchPower(void) {
 }
 
 static void UNROM512LatchClose(void) {
+	UDBG("Rainbow512 close\n");
 	if(flash_write_count)
 		FCEU_gfree(flash_write_count);
 	if(flashdata)
@@ -291,6 +294,8 @@ static void UNROM512HSync()
 }
 
 void RAINBOW512_Init(CartInfo *info) {
+	UDBG("Rainbow512 init\n");
+
 	flash_state=0;
 	flash_bank=0;
 	flash_save=info->battery;

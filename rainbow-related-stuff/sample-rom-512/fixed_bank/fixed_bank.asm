@@ -1,0 +1,5 @@
+#include "fixed_bank/main_loop.asm"
+#include "fixed_bank/game_states.asm"
+#include "fixed_bank/rainbow_lib.asm"
+#include "fixed_bank/utils.asm"
+#include "fixed_bank/filler.asm"
