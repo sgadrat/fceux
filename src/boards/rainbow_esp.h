@@ -79,9 +79,9 @@ private:
 		FILE_DATA,
 		WIFI_STATUS,
 		SERVER_STATUS,
-		MESSAGE_FROM_SERVER,
 		RND_BYTE,
 		RND_WORD,
+		MESSAGE_FROM_SERVER,
 	};
 
 	void processBufferedMessage();

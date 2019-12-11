@@ -27,7 +27,9 @@ FROMESP_MSG_FILE_LIST = 2           ; Returns path file list
 FROMESP_MSG_FILE_DATA = 3           ; Returns file data (FILE_READ / FILE_READ_AUTO)
 FROMESP_MSG_WIFI_STATUS = 4         ; Returns WiFi connection status
 FROMESP_MSG_SERVER_STATUS = 5       ; Returns server connection status
-FROMESP_MSG_MESSAGE_FROM_SERVER = 6 ; Message from server
+FROMESP_MSG_RND_BYTE = 6            ; Returns random byte value
+FROMESP_MSG_RND_WORD = 7            ; Returns random word value
+FROMESP_MSG_MESSAGE_FROM_SERVER = 8 ; Message from server
 
 ESP_FILE_PATH_SAVE = 0
 ESP_FILE_PATH_ROMS = 1
