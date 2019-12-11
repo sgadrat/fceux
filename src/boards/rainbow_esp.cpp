@@ -126,6 +126,44 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::WIFI_STATUS));
 			this->tx_buffer.push_back(3); // Simple answer, wifi is ok
 			break;
+		case n2e_cmds_t::GET_RND_BYTE:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_BYTE\n");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(2);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::RND_BYTE));
+			this->tx_buffer.push_back(static_cast<uint8>(rand() % 256));
+			break;
+		case n2e_cmds_t::GET_RND_BYTE_RANGE: {
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_BYTE_RANGE\n");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(2);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::RND_BYTE));
+			int const min_value = this->rx_buffer.at(2);
+			int const max_value = this->rx_buffer.at(3);
+			int const range = max_value - min_value;
+			this->tx_buffer.push_back(static_cast<uint8>(min_value + (rand() % range)));
+			break;
+		}
+		case n2e_cmds_t::GET_RND_WORD:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_WORD\n");
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(3);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::RND_WORD));
+			this->tx_buffer.push_back(static_cast<uint8>(rand() % 256));
+			this->tx_buffer.push_back(static_cast<uint8>(rand() % 256));
+			break;
+		case n2e_cmds_t::GET_RND_WORD_RANGE: {
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_WORD_RANGE\n");
+			this->tx_buffer.push_back(3);
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::RND_WORD));
+			int const min_value = (static_cast<int>(this->rx_buffer.at(2)) << 8) + this->rx_buffer.at(3);
+			int const max_value = (static_cast<int>(this->rx_buffer.at(4)) << 8) + this->rx_buffer.at(5);
+			int const range = max_value - min_value;
+			int const rand_value = min_value + (rand() % range);
+			this->tx_buffer.push_back(static_cast<uint8>(rand_value >> 8));
+			this->tx_buffer.push_back(static_cast<uint8>(rand_value & 0xff));
+			break;
+		}
 		case n2e_cmds_t::GET_SERVER_STATUS:
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_STATUS\n");
 			this->tx_buffer.push_back(last_byte_read);
@@ -141,7 +179,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
 			this->closeConnection();
 			break;
-		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
+		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER:
+		case n2e_cmds_t::SEND_MESSAGE_TO_GAME: {
 			UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
 			uint8 const payload_size = this->rx_buffer.size() - 2;
 			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;

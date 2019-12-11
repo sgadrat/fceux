@@ -1,29 +1,34 @@
-#define TOESP_MSG_GET_ESP_STATUS 0
-#define TOESP_MSG_DEBUG_LOG 1
-#define TOESP_MSG_CLEAR_BUFFERS 2
-#define TOESP_MSG_GET_WIFI_STATUS 3
-#define TOESP_MSG_GET_SERVER_STATUS 4
-#define TOESP_MSG_CONNECT_TO_SERVER 5
-#define TOESP_MSG_DISCONNECT_FROM_SERVER 6
-#define TOESP_MSG_SEND_MESSAGE_TO_SERVER 7
-#define TOESP_MSG_FILE_OPEN 8
-#define TOESP_MSG_FILE_CLOSE 9
-#define TOESP_MSG_FILE_EXISTS 10
-#define TOESP_MSG_FILE_DELETE 11
-#define TOESP_MSG_FILE_SET_CUR 12
-#define TOESP_MSG_FILE_READ 13
-#define TOESP_MSG_FILE_WRITE 14
-#define TOESP_MSG_FILE_APPEND 15
-#define TOESP_MSG_GET_FILE_LIST 16
+TOESP_MSG_GET_ESP_STATUS = 0          ; Get ESP status
+TOESP_MSG_DEBUG_LOG = 1               ; Debug / Log data
+TOESP_MSG_CLEAR_BUFFERS = 2           ; Clear RX/TX buffers
+TOESP_MSG_GET_WIFI_STATUS = 3         ; Get WiFi connection status
+TOESP_MSG_GET_RND_BYTE = 4            ; Get random byte
+TOESP_MSG_GET_RND_BYTE_RANGE = 5      ; Get random byte between custom min/max
+TOESP_MSG_GET_RND_WORD = 6            ; Get random word
+TOESP_MSG_GET_RND_WORD_RANGE = 7      ; Get random word between custom min/max
+TOESP_MSG_GET_SERVER_STATUS = 8       ; Get server connection status
+TOESP_MSG_CONNECT_TO_SERVER = 9       ; Connect to server
+TOESP_MSG_DISCONNECT_FROM_SERVER = 10 ; Disconnect from server
+TOESP_MSG_SEND_MESSAGE_TO_SERVER = 11 ; Send message to rainbow server
+TOESP_MSG_SEND_MESSAGE_TO_GAME = 12   ; Send message to game server
+TOESP_MSG_FILE_OPEN = 13              ; Open working file
+TOESP_MSG_FILE_CLOSE = 14             ; Close working file
+TOESP_MSG_FILE_EXISTS = 15            ; Check if file exists
+TOESP_MSG_FILE_DELETE = 16            ; Delete a file
+TOESP_MSG_FILE_SET_CUR = 17           ; Set working file cursor position a file
+TOESP_MSG_FILE_READ = 18              ; Read working file (at specific position)
+TOESP_MSG_FILE_WRITE = 19             ; Write working file (at specific position)
+TOESP_MSG_FILE_APPEND = 20            ; Append data to working file
+TOESP_MSG_GET_FILE_LIST = 21          ; Get list of existing files in a path
 
-#define FROMESP_MSG_READY 0
-#define FROMESP_MSG_FILE_EXISTS 1
-#define FROMESP_MSG_FILE_LIST 2
-#define FROMESP_MSG_FILE_DATA 3
-#define FROMESP_MSG_WIFI_STATUS 4
-#define FROMESP_MSG_SERVER_STATUS 5
-#define FROMESP_MSG_MESSAGE_FROM_SERVER 6
+FROMESP_MSG_READY = 0               ; ESP is ready
+FROMESP_MSG_FILE_EXISTS = 1         ; Returns if file exists or not
+FROMESP_MSG_FILE_LIST = 2           ; Returns path file list
+FROMESP_MSG_FILE_DATA = 3           ; Returns file data (FILE_READ / FILE_READ_AUTO)
+FROMESP_MSG_WIFI_STATUS = 4         ; Returns WiFi connection status
+FROMESP_MSG_SERVER_STATUS = 5       ; Returns server connection status
+FROMESP_MSG_MESSAGE_FROM_SERVER = 6 ; Message from server
 
-#define ESP_FILE_PATH_SAVE 0
-#define ESP_FILE_PATH_ROMS 1
-#define ESP_FILE_PATH_USER 2
+ESP_FILE_PATH_SAVE = 0
+ESP_FILE_PATH_ROMS = 1
+ESP_FILE_PATH_USER = 2
