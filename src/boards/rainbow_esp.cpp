@@ -421,35 +421,6 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 
 	// UDP
 	if (this->udp_socket != -1) {
-#if 1
-		size_t const MAX_DGRAM_SIZE = 256;
-		std::vector<uint8> data;
-		data.resize(MAX_DGRAM_SIZE);
-		sockaddr_in addr_from;
-		socklen_t addr_from_len = sizeof(addr_from);
-		ssize_t msg_len = recvfrom(
-			this->udp_socket, reinterpret_cast<void*>(data.data()), MAX_DGRAM_SIZE, MSG_DONTWAIT,
-			reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
-		);
-		if (msg_len == -1) {
-			if (errno != EWOULDBLOCK && errno != EAGAIN) {
-				UDBG("RAINBOW failed to read UDP socket: %s\n", strerror(errno));
-			}
-		}else if (msg_len < 256) {
-			UDBG("RAINBOW received UDP datagram of size %zd: ", msg_len);
-			for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
-				UDBG("%02x", *it);
-			}
-			UDBG("\n");
-			this->tx_buffer.push_back(last_byte_read);
-			this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
-			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER));
-			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.begin() + msg_len);
-		}else {
-			UDBG("RAINBOW received a bigger than expected UDP datagram\n");
-			//TODO handle it like Rainbow's ESP handle it
-		}
-#else
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(this->udp_socket, &rfds);
@@ -458,11 +429,10 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 		tv.tv_sec = 0;
 		tv.tv_usec = 0;
 
-		int n_readable = select(1, &rfds, NULL, NULL, &tv);
+		int n_readable = select(this->udp_socket+1, &rfds, NULL, NULL, &tv);
 		if (n_readable == -1) {
 			UDBG("RAINBOW failed to check sockets for data: %s\n", strerror(errno));
 		}else if (n_readable > 0) {
-			UDBG("Got answer"); //TODO remove this log it is juste there to show that select never returns non-zero
 			if (FD_ISSET(this->udp_socket, &rfds)) {
 				size_t const MAX_DGRAM_SIZE = 256;
 				std::vector<uint8> data;
@@ -491,7 +461,6 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 				}
 			}
 		}
-#endif
 	}
 }
 
@@ -549,7 +518,6 @@ void BrokeStudioFirmware::openConnection() {
 		UDBG("RAINBOW unable to connect to UDP server: %s\n", strerror(errno));
 	}
 
-	//TODO investigate if we need to call bind() on the socket
 	sockaddr_in bind_addr;
 	bzero(reinterpret_cast<void*>(&bind_addr), sizeof(bind_addr));
 	bind_addr.sin_family = AF_INET;
