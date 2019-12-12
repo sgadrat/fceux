@@ -60,6 +60,7 @@ private:
 		DISCONNECT_FROM_SERVER,
 		SEND_MESSAGE_TO_SERVER,
 		SEND_MESSAGE_TO_GAME,
+		SEND_UDP_TO_GAME,
 		FILE_OPEN,
 		FILE_CLOSE,
 		FILE_EXISTS,
@@ -92,6 +93,8 @@ private:
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);
+	template<class I>
+	void sendUdpDatagramToServer(I begin, I end);
 	void receiveDataFromServer();
 
 	void closeConnection();
@@ -114,6 +117,9 @@ private:
 
 	easywsclient::WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;
+
+	int udp_socket = -1;
+	sockaddr_in server_addr;
 
 	mg_mgr mgr;
 	mg_connection *nc = nullptr;

@@ -43,7 +43,9 @@
 #define CURRENT_BANK_NUMBER $05
 #echo
 #echo === BANK 05 ===
-#include "swapable_banks/empty_bank.asm"
+* = $8000
+#include "swapable_banks/sample_udp.asm"
+#include "swapable_banks/bank_filler.asm"
 
 #define CURRENT_BANK_NUMBER $06
 #echo

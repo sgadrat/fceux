@@ -3,6 +3,7 @@
 #include "../fceu.h"
 
 #include <regex>
+#include <netinet/udp.h> // expect mongoose.h to have been included for netinet/in.h and sys/socket.h (as well as portability macros for non-posix systems)
 
 using easywsclient::WebSocket;
 
@@ -188,6 +189,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->sendMessageToServer(payload_begin, payload_end);
 			break;
 		}
+		case n2e_cmds_t::SEND_UDP_TO_GAME: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SEND_UDP_TO_GAME\n");
+			uint8 const payload_size = this->rx_buffer.size() - 2;
+			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
+			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
+			this->sendUdpDatagramToServer(payload_begin, payload_end);
+			break;
+		}
 		case n2e_cmds_t::FILE_OPEN:
 			if (message_size == 3) {
 				uint8 const selected_path = this->rx_buffer.at(2);
@@ -359,29 +368,131 @@ void BrokeStudioFirmware::sendMessageToServer(I begin, I end) {
 	}
 }
 
+template<class I>
+void BrokeStudioFirmware::sendUdpDatagramToServer(I begin, I end) {
+#ifdef RAINBOW_DEBUG
+	FCEU_printf("RAINBOW udp datagram to send: ");
+	for (I cur = begin; cur < end; ++cur) {
+		FCEU_printf("%02x ", *cur);
+	}
+	FCEU_printf("\n");
+#endif
+
+	if (this->udp_socket != -1) {
+		size_t message_size = end - begin;
+		std::vector<uint8> aggregated;
+		aggregated.reserve(message_size);
+		aggregated.insert(aggregated.end(), begin, end);
+
+		ssize_t n = sendto(
+			this->udp_socket, aggregated.data(), aggregated.size(), 0,
+			reinterpret_cast<sockaddr*>(&this->server_addr), sizeof(sockaddr)
+		);
+		if (n == -1) {
+			UDBG("RAINBOW UDP send failed: %s\n", strerror(errno));
+		}else if (n != message_size) {
+			UDBG("RAINBOW UDP sent partial message\n");
+		}
+	}
+}
+
 void BrokeStudioFirmware::receiveDataFromServer() {
-	if (this->socket == nullptr) {
-		return;
+	// Websocket
+	if (this->socket != nullptr) {
+		this->socket->poll();
+		this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
+			size_t const msg_len = data.end() - data.begin();
+			if (msg_len <= 0xff) {
+				UDBG("RAINBOW WebSocket data received... size %02x, msg: ", msg_len);
+				for (uint8_t const c: data) {
+					UDBG("%02x", c);
+				}
+				UDBG("\n");
+				// add last received byte first to match hardware behavior
+				// it's more of a mapper thing though ...
+				// needs a dummy $5000 read when reading data from buffer
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER));
+				this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
+			}
+		});
 	}
 
-	this->socket->poll();
-	this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
-		size_t const msg_len = data.end() - data.begin();
-		if (msg_len <= 0xff) {
-			UDBG("RAINBOW WebSocket data received... size %02x, msg: ", msg_len);
-			for (uint8_t const c: data) {
-				UDBG("%02x", c);
+	// UDP
+	if (this->udp_socket != -1) {
+#if 1
+		size_t const MAX_DGRAM_SIZE = 256;
+		std::vector<uint8> data;
+		data.resize(MAX_DGRAM_SIZE);
+		sockaddr_in addr_from;
+		socklen_t addr_from_len = sizeof(addr_from);
+		ssize_t msg_len = recvfrom(
+			this->udp_socket, reinterpret_cast<void*>(data.data()), MAX_DGRAM_SIZE, MSG_DONTWAIT,
+			reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
+		);
+		if (msg_len == -1) {
+			if (errno != EWOULDBLOCK && errno != EAGAIN) {
+				UDBG("RAINBOW failed to read UDP socket: %s\n", strerror(errno));
+			}
+		}else if (msg_len < 256) {
+			UDBG("RAINBOW received UDP datagram of size %zd: ", msg_len);
+			for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
+				UDBG("%02x", *it);
 			}
 			UDBG("\n");
-			// add last received byte first to match hardware behavior
-			// it's more of a mapper thing though ...
-			// needs a dummy $5000 read when reading data from buffer
 			this->tx_buffer.push_back(last_byte_read);
 			this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER));
-			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.end());
+			this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.begin() + msg_len);
+		}else {
+			UDBG("RAINBOW received a bigger than expected UDP datagram\n");
+			//TODO handle it like Rainbow's ESP handle it
 		}
-	});
+#else
+		fd_set rfds;
+		FD_ZERO(&rfds);
+		FD_SET(this->udp_socket, &rfds);
+
+		timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
+
+		int n_readable = select(1, &rfds, NULL, NULL, &tv);
+		if (n_readable == -1) {
+			UDBG("RAINBOW failed to check sockets for data: %s\n", strerror(errno));
+		}else if (n_readable > 0) {
+			UDBG("Got answer"); //TODO remove this log it is juste there to show that select never returns non-zero
+			if (FD_ISSET(this->udp_socket, &rfds)) {
+				size_t const MAX_DGRAM_SIZE = 256;
+				std::vector<uint8> data;
+				data.resize(MAX_DGRAM_SIZE);
+				sockaddr_in addr_from;
+				socklen_t addr_from_len = sizeof(addr_from);
+				ssize_t msg_len = recvfrom(
+					this->udp_socket, reinterpret_cast<void*>(data.data()), MAX_DGRAM_SIZE, 0,
+					reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
+				);
+				if (msg_len == -1) {
+					UDBG("RAINBOW failed to read UDP socket: %s\n", strerror(errno));
+				}else if (msg_len < 256) {
+					UDBG("RAINBOW received UDP datagram of size %zd: ", msg_len);
+					for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
+						UDBG("%02x", *it);
+					}
+					UDBG("\n");
+					this->tx_buffer.push_back(last_byte_read);
+					this->tx_buffer.push_back(static_cast<uint8>(msg_len+1));
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER));
+					this->tx_buffer.insert(this->tx_buffer.end(), data.begin(), data.begin() + msg_len);
+				}else {
+					UDBG("RAINBOW received a bigger than expected UDP datagram\n");
+					//TODO handle it like Rainbow's ESP handle it
+				}
+			}
+		}
+#endif
+	}
 }
 
 void BrokeStudioFirmware::closeConnection() {
@@ -414,12 +525,37 @@ void BrokeStudioFirmware::closeConnection() {
 void BrokeStudioFirmware::openConnection() {
 	this->closeConnection();
 
+	// Create websocket
 	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
 	if (!ws) {
-		UDBG("RAINBOW unable to connect to server");
+		UDBG("RAINBOW unable to connect to WebSocket server\n");
+	}else {
+		this->socket = ws;
+	}
+
+	// Init UDP socket and store parsed address
+	hostent *he = gethostbyname("localhost");
+	if (he == NULL) {
+		UDBG("RAINBOW unable to resolve UDP server's hostname\n");
 		return;
 	}
-	this->socket = ws;
+	bzero(reinterpret_cast<void*>(&this->server_addr), sizeof(this->server_addr));
+	this->server_addr.sin_family = AF_INET;
+	this->server_addr.sin_port = htons(3000);
+	this->server_addr.sin_addr = *((in_addr*)he->h_addr);
+
+	this->udp_socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	if (this->udp_socket == -1) {
+		UDBG("RAINBOW unable to connect to UDP server: %s\n", strerror(errno));
+	}
+
+	//TODO investigate if we need to call bind() on the socket
+	sockaddr_in bind_addr;
+	bzero(reinterpret_cast<void*>(&bind_addr), sizeof(bind_addr));
+	bind_addr.sin_family = AF_INET;
+	bind_addr.sin_port = htons(0);
+	bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	bind(this->udp_socket, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(sockaddr));
 }
 
 std::string BrokeStudioFirmware::pathStrFromIndex(uint8 path, uint8 file) {
