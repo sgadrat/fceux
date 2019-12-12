@@ -3,7 +3,29 @@
 #include "../fceu.h"
 
 #include <regex>
-#include <netinet/udp.h> // expect mongoose.h to have been included for netinet/in.h and sys/socket.h (as well as portability macros for non-posix systems)
+#include <map>
+#include <sstream>
+
+#if defined(_WIN32) || defined(WIN32)
+
+//Note: do not include UDP networking, mongoose.h should have done it correctly taking care of defining portability macros
+
+// Compatibility hacks
+typedef SSIZE_T ssize_t;
+#define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
+#define cast_network_payload(x) reinterpret_cast<char*>(x)
+
+#else
+
+// UDP networking
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/udp.h>
+
+// Compatibility hacks
+#define cast_network_payload(x) reinterpret_cast<void*>(x)
+
+#endif
 
 using easywsclient::WebSocket;
 
@@ -385,7 +407,7 @@ void BrokeStudioFirmware::sendUdpDatagramToServer(I begin, I end) {
 		aggregated.insert(aggregated.end(), begin, end);
 
 		ssize_t n = sendto(
-			this->udp_socket, aggregated.data(), aggregated.size(), 0,
+			this->udp_socket, cast_network_payload(aggregated.data()), aggregated.size(), 0,
 			reinterpret_cast<sockaddr*>(&this->server_addr), sizeof(sockaddr)
 		);
 		if (n == -1) {
@@ -440,7 +462,7 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 				sockaddr_in addr_from;
 				socklen_t addr_from_len = sizeof(addr_from);
 				ssize_t msg_len = recvfrom(
-					this->udp_socket, reinterpret_cast<void*>(data.data()), MAX_DGRAM_SIZE, 0,
+					this->udp_socket, cast_network_payload(data.data()), MAX_DGRAM_SIZE, 0,
 					reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
 				);
 				if (msg_len == -1) {
