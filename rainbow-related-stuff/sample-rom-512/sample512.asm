@@ -13,6 +13,7 @@
 
 #include "others/nes_labels.asm"
 #include "others/mem_labels.asm"
+#include "others/constants.asm"
 #include "others/macros.asm"
 
 ; PRG-ROM

@@ -1,5 +1,9 @@
 SAMPLE_IRQ_BANK = CURRENT_BANK_NUMBER
 
+sample_irq_last_server_msg = $0400
+sample_irq_wifi_state = $10
+sample_irq_server_state = $11
+
 sample_irq_screen_init:
 .(
 	.(
@@ -26,6 +30,12 @@ sample_irq_screen_init:
 		sta tmpfield2
 		jsr draw_zipped_nametable
 
+		; Reset demo state
+		lda #0
+		sta sample_irq_last_server_msg
+		sta sample_irq_wifi_state
+		sta sample_irq_server_state
+
 		; Unmask IRQs
 		cli
 
@@ -51,10 +61,6 @@ nametable_attributes:
 .byt ZIPNT_END
 
 .)
-
-sample_irq_last_server_msg = $0400
-sample_irq_wifi_state = $10
-sample_irq_server_state = $11
 
 sample_irq_process_irq:
 .(

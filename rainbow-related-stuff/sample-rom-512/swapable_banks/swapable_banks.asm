@@ -17,6 +17,7 @@
 #echo === BANK 01 ===
 * = $8000
 #include "swapable_banks/sample_connection.asm"
+#include "swapable_banks/menu.asm"
 #include "swapable_banks/bank_filler.asm"
 
 #define CURRENT_BANK_NUMBER $02
