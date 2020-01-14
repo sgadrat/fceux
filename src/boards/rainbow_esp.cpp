@@ -2,6 +2,7 @@
 
 #include "../fceu.h"
 
+#include <cstdlib>
 #include <regex>
 #include <map>
 #include <sstream>
@@ -516,8 +517,18 @@ void BrokeStudioFirmware::closeConnection() {
 void BrokeStudioFirmware::openConnection() {
 	this->closeConnection();
 
+	// Get host/port
+	char const* hostname = ::getenv("RAINBOW_SERVER_ADDR");
+	if (hostname == nullptr) hostname = "localhost";
+
+	char const* port_cstr = ::getenv("RAINBOW_SERVER_PORT");
+	if (port_cstr == nullptr) port_cstr = "3000";
+	std::istringstream port_iss(port_cstr);
+	uint16_t port;
+	port_iss >> port;
+
 	// Create websocket
-	WebSocket::pointer ws = WebSocket::from_url("ws://localhost:3000");
+	WebSocket::pointer ws = WebSocket::from_url(std::string("ws://") + hostname + ":" + port_cstr);
 	if (!ws) {
 		UDBG("RAINBOW unable to connect to WebSocket server\n");
 	}else {
@@ -525,14 +536,14 @@ void BrokeStudioFirmware::openConnection() {
 	}
 
 	// Init UDP socket and store parsed address
-	hostent *he = gethostbyname("localhost");
+	hostent *he = gethostbyname(hostname);
 	if (he == NULL) {
 		UDBG("RAINBOW unable to resolve UDP server's hostname\n");
 		return;
 	}
 	bzero(reinterpret_cast<void*>(&this->server_addr), sizeof(this->server_addr));
 	this->server_addr.sin_family = AF_INET;
-	this->server_addr.sin_port = htons(3000);
+	this->server_addr.sin_port = htons(port);
 	this->server_addr.sin_addr = *((in_addr*)he->h_addr);
 
 	this->udp_socket = ::socket(AF_INET, SOCK_DGRAM, 0);
