@@ -37,7 +37,7 @@
 #include "rainbow_esp.h"
 
 #undef RAINBOW_DEBUG
-#define RAINBOW_DEBUG
+//define RAINBOW_DEBUG
 
 #ifdef RAINBOW_DEBUG
 #define UDBG(...) FCEU_printf(__VA_ARGS__)

@@ -10,10 +10,10 @@
 #include <limits>
 #include <sstream>
 
-#undef RAINBOW_DEBUG
-//define RAINBOW_DEBUG
+#undef NESNET_DEBUG
+//define NESNET_DEBUG
 
-#ifdef RAINBOW_DEBUG
+#ifdef NESNET_DEBUG
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
 #else
 #define UDBG(...)
@@ -23,6 +23,7 @@
 // Mapper implementation
 
 namespace {
+
 /* Flash write unlock sequence logic */
 
 enum class flash_write_mode_t : uint8 {
@@ -90,31 +91,31 @@ static flash_write_mode_t flash_chr_write_mode = flash_write_mode_t::WRITE_DISAB
 
 /* ESP interface */
 
-static DECLFW(RAINBOWWrite) {
-	UDBG("RAINBOW write %04x %02x\n", A, V);
+static DECLFW(NESNETWrite) {
+	UDBG("NESNET write %04x %02x\n", A, V);
 	esp->rx(V);
 }
 
-static DECLFR(RAINBOWRead) {
-	UDBG("RAINBOW read %04x\n", A);
+static DECLFR(NESNETRead) {
+	UDBG("NESNET read %04x\n", A);
 	return esp->tx();
 }
 
-static DECLFW(RAINBOWWriteFlags) {
-	UDBG("RAINBOW write %04x %02x\n", A, V);
+static DECLFW(NESNETWriteFlags) {
+	UDBG("NESNET write %04x %02x\n", A, V);
 	esp_enable = V & 0x01;
 	irq_enable = V & 0x40;
 }
 
-static DECLFR(RAINBOWReadFlags) {
+static DECLFR(NESNETReadFlags) {
 	uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
 	uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
 	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
-	UDBG("RAINBOW read flags %04x => %02x\n", A, esp_rts_flag | esp_enable_flag | irq_enable_flag);
+	UDBG("NESNET read flags %04x => %02x\n", A, esp_rts_flag | esp_enable_flag | irq_enable_flag);
 	return esp_rts_flag | esp_enable_flag | irq_enable_flag;
 }
 
-static void RAINBOWMapIrq(int32) {
+static void NESNETMapIrq(int32) {
 	if (irq_enable) {
 		if (esp->getGpio15()) {
 			X6502_IRQBegin(FCEU_IQEXT);
@@ -126,16 +127,16 @@ static void RAINBOWMapIrq(int32) {
 
 /* Flash memory writing logic */
 
-DECLFW(RAINBOWWriteFlash) {
+DECLFW(NESNETWriteFlash) {
 	assert(0x8000 <= A && A <= 0xffff);
-	UDBG("RAINBOW write flash %04x => %02x\n", A, V);
+	UDBG("NESNET write flash %04x => %02x\n", A, V);
 	bool reset_flash_mode = false;
 	switch (flash_prg_write_mode) {
 		case flash_write_mode_t::WRITE_DISABLED:
 			flash_prg_write_mode = flash_prg_sequence_counter.addWrite(A, V);
 			break;
 		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("RAINBOW erase sector %04x %02x\n", A, V);
+			UDBG("NESNET erase sector %04x %02x\n", A, V);
 			if (A == 0x8000 || A == 0x9000 || A == 0xa000 || A == 0xb000 || A == 0xc000 || A == 0xd000 || A == 0xe000 || A == 0xf000) {
 				::memset(flash_prg + (A - 0x8000), 0xff, 0x1000);
 				for (uint32 i = A; i < A + 0x1000; ++i) {
@@ -149,7 +150,7 @@ DECLFW(RAINBOWWriteFlash) {
 			reset_flash_mode = true;
 			break;
 		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("RAINBOW write byte %04x %02x (previous=%02x)\n", A, V, flash_prg[A - 0x8000]);
+			UDBG("NESNET write byte %04x %02x (previous=%02x)\n", A, V, flash_prg[A - 0x8000]);
 			flash_prg[A - 0x8000] &= V;
 			flash_prg_written[A - 0x8000] = true;
 			reset_flash_mode = true;
@@ -162,27 +163,27 @@ DECLFW(RAINBOWWriteFlash) {
 	}
 }
 
-DECLFR(RAINBOWReadFlash) {
+DECLFR(NESNETReadFlash) {
 	assert(0x8000 <= A && A <= 0xffff);
-	//UDBG("RAINBOW read flash %04x\n", A);
+	//UDBG("NESNET read flash %04x\n", A);
 	if (flash_prg_written[A - 0x8000]) {
-		//UDBG("RAINBOW    read from flash %04x => %02x\n", A, flash[A - 0x8000]);
+		//UDBG("NESNET    read from flash %04x => %02x\n", A, flash[A - 0x8000]);
 		return flash_prg[A - 0x8000];
 	}
-	//UDBG("RAINBOW    from PRG\n");
+	//UDBG("NESNET    from PRG\n");
 	return CartBR(A);
 }
 
-static void RAINBOWWritePPUFlash(uint32 A, uint8 V) {
+static void NESNETWritePPUFlash(uint32 A, uint8 V) {
 	assert(A <= 0x1fff);
-	UDBG("RAINBOW write PPU flash %04x => %02x\n", A, V);
+	UDBG("NESNET write PPU flash %04x => %02x\n", A, V);
 	bool reset_flash_mode = false;
 	switch (flash_chr_write_mode) {
 		case flash_write_mode_t::WRITE_DISABLED:
 			flash_chr_write_mode = flash_chr_sequence_counter.addWrite(A, V);
 			break;
 		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("RAINBOW erase CHR sector %04x %02x\n", A, V);
+			UDBG("NESNET erase CHR sector %04x %02x\n", A, V);
 			if (A == 0x0000 || A == 0x0800 || A == 0x1000 || A == 0x1800) {
 				::memset(flash_chr + A, 0xff, 0x0800);
 				for (uint32 i = A; i < A + 0x0800; ++i) {
@@ -196,7 +197,7 @@ static void RAINBOWWritePPUFlash(uint32 A, uint8 V) {
 			reset_flash_mode = true;
 			break;
 		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("RAINBOW write CHR byte %04x %02x (previous=%02x)\n", A, V, flash_chr[A]);
+			UDBG("NESNET write CHR byte %04x %02x (previous=%02x)\n", A, V, flash_chr[A]);
 			flash_chr[A] &= V;
 			flash_chr_written[A] = true;
 			reset_flash_mode = true;
@@ -209,14 +210,14 @@ static void RAINBOWWritePPUFlash(uint32 A, uint8 V) {
 	}
 }
 
-static void RAINBOWPPUWrite(uint32 A, uint8 V) {
+static void NESNETPPUWrite(uint32 A, uint8 V) {
 	if (A < 0x2000) {
-		RAINBOWWritePPUFlash(A, V);
+		NESNETWritePPUFlash(A, V);
 	}
 	FFCEUX_PPUWrite_Default(A, V);
 }
 
-uint8 FASTCALL RAINBOWPPURead(uint32 A) {
+uint8 FASTCALL NESNETPPURead(uint32 A) {
 	if (A < 0x2000 && flash_chr_written[A]) {
 		if (PPU_hook) PPU_hook(A);
 		return flash_chr[A];
@@ -227,7 +228,7 @@ uint8 FASTCALL RAINBOWPPURead(uint32 A) {
 /* Mapper initialization and cleaning */
 
 static void LatchClose(void) {
-	UDBG("RAINBOW latch close\n");
+	UDBG("NESNET latch close\n");
 	if (WRAM) {
 		FCEU_gfree(WRAM);
 	}
@@ -250,8 +251,8 @@ static void LatchClose(void) {
 	delete esp;
 }
 
-static void RAINBOWPower(void) {
-	UDBG("RAINBOW power\n");
+static void NESNETPower(void) {
+	UDBG("NESNET power\n");
 	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
 	setprg16(0x8000, ~1);
 	setprg16(0xC000, ~0);
@@ -262,13 +263,13 @@ static void RAINBOWPower(void) {
 
 	FCEU_CheatAddRAM(WRAMSIZE >> 10, 0x6000, WRAM);
 
-	SetWriteHandler(0x5000, 0x5000, RAINBOWWrite);
-	SetReadHandler(0x5000, 0x5000, RAINBOWRead);
-	SetWriteHandler(0x5001, 0x5001, RAINBOWWriteFlags);
-	SetReadHandler(0x5001, 0x5001, RAINBOWReadFlags);
+	SetWriteHandler(0x5000, 0x5000, NESNETWrite);
+	SetReadHandler(0x5000, 0x5000, NESNETRead);
+	SetWriteHandler(0x5001, 0x5001, NESNETWriteFlags);
+	SetReadHandler(0x5001, 0x5001, NESNETReadFlags);
 
-	SetReadHandler(0x8000, 0xFFFF, RAINBOWReadFlash);
-	SetWriteHandler(0x8000, 0xFFFF, RAINBOWWriteFlash);
+	SetReadHandler(0x8000, 0xFFFF, NESNETReadFlash);
+	SetWriteHandler(0x8000, 0xFFFF, NESNETWriteFlash);
 
 	esp = new BrokeStudioFirmware;
 	esp_enable = true;
@@ -279,9 +280,9 @@ static void RAINBOWPower(void) {
 	flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
 }
 
-void RAINBOW_Init(CartInfo *info) {
-	UDBG("RAINBOW init\n");
-	info->Power = RAINBOWPower;
+void NESNET_Init(CartInfo *info) {
+	UDBG("NESNET init\n");
+	info->Power = NESNETPower;
 	info->Close = LatchClose;
 
 	// Initialize flash PRG
@@ -309,8 +310,8 @@ void RAINBOW_Init(CartInfo *info) {
 	AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 
 	// Set a hook on hblank to be able periodically check if we have to send an interupt
-	MapIRQHook = RAINBOWMapIrq;
+	MapIRQHook = NESNETMapIrq;
 
-	FFCEUX_PPURead = RAINBOWPPURead;
-	FFCEUX_PPUWrite = RAINBOWPPUWrite;
+	FFCEUX_PPURead = NESNETPPURead;
+	FFCEUX_PPUWrite = NESNETPPUWrite;
 }

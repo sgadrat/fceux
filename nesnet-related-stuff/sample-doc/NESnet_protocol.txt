@@ -1,0 +1,149 @@
+
+
+
+set command/opcode:
+1) wait for $5001.7 to be set
+2) write command/opcode to $5000
+
+if WRITE opcode (6502 needs to send operands or more data):
+3) wait for $5001.7 to be set
+4) write operands/data
+5) repeat from step 3 till all operands & data have been written
+
+if READ opcode (6502 requesting data from ESP)
+3) wait for $5001.6 to be clear
+4) read requested data in $5000
+if requesting more data:
+6a) $5001.7 should be set since $5001.6 was clear, unless this process was interrupted (allowed)
+6b) if this process was interrupted, wait for $5001.7 to be set
+5) write "NEXT" opcode to $5000 (0x00)
+	writting an opcode other than "NEXT" in step 5 aborts/pauses current read request
+6) repeat from step 3 till all desired data has been aquired (do not have to read all requested data)
+
+
+
+
+-----------------------------------------------
+64 incoming & 64 outgoing variable mode
+-----------------------------------------------
+
+OPCODE bits:
+7 - Rd-0 / Wr-1 
+	0-read incoming vars from the network
+	1-write outgoing vars to be sent to the network
+6 - set (this opcode mode)
+5-0 - variable number
+
+OPERAND:
+1 Byte - variable value (read/write based on opcode bit7)
+
+	TODO:
+	-change trigger for when outgoing vars are sent
+	(currently all 64 are sent anytime 1 of them is updated)
+	-provide polling/interrupt means for 6502 to tell
+	when some/any/specific incoming variables are updated
+	(currently reading just provides current value)
+	-consider "next" command so 6502 doesn't have to increment opcode.?
+	
+	WRITE:
+	B0: W opcode 
+		0xC0+variable number (0-63)
+	B1: W operand 
+		update variable to this value
+	READ:
+	B0: W opcode
+		0x40+variable number (0-63)
+	B1: R operand
+		current value of variable
+
+
+
+-----------------------------------------------
+SPECIAL COMMANDS:
+-----------------------------------------------
+OPCODE bits:
+7 - (unused R/W currently implied based on the command)
+6 - clear (not using immediate variable mode)
+5 - (unused length implied)
+4 - set (this special command mode)
+3-0 - command
+3 - fast-1 main-0 (TODO determine whether worth keeping..)
+	fast commands are processed by isr
+	main slower commands are processed in ESP main thread
+
+	SLOW/MAIN COMMANDS:
+	0x0 RESET
+		B1 - Read reply 0xA5 if ESP reset sucessfully
+			else the command would still be in data register
+	0x1 MARK_READ (decrement unread message count)
+		No operand/data
+
+	FAST COMMANDS:
+	0x8 don't think I meant to skip this opcode number..
+	0x9 MSG_POLL (number of unread messages in incoming buffer)
+		B1 - Read reply
+	0xA MSG_SENT (number of unsent messages in outgoing buffer)
+		B1 - Read reply
+	
+	
+
+-----------------------------------------------
+MESSAGES:
+-----------------------------------------------
+
+OPCODE bits:
+7 - Rd-0 / Wr-1 
+6 - clear (not variable mode)
+5 - long-1 med-0
+4 - clear (not special mode)
+
+	medium/quick:
+	message always sent to connection #0
+	3-0 message length 1-15 (0 currently invalid)
+	B1-15 R/W message string (based on opcode bit 7)
+	writes: verify W is set, then write next byte in string, repeat till done
+	reads: verify R is clear, read next value of string,  send next command, repeat, repeat till done
+		NEXT COMMAND: 0x00
+			7-clear
+			6-clear
+			5- don't care
+			4-clear
+			3-0 don't care
+	
+
+	long (rainbow):
+	3-0 connention number or meta data flag
+		0-7 connection number
+		0xF - meta data (can think of the ESP itself being the connection)
+	B1 - length of message 1-255 (0 currently invalid)
+	B2-256 R/W message string 
+	writes/reads same as medium above
+
+
+
+		---------------------------------------------
+		ESP MESSAGE STRINGS/CODES "CONNECTION F"
+		---------------------------------------------
+		2nd byte (one that follows length) is like a sub opcode
+		ignoring the required 1st 2 bytes of OPCODE & LENGTH, 
+		I reset the notation count to B0 (Byte0) but really it's the 3rd byte sent
+	
+		//TODO:
+		0x1 WIFI_NETWORK
+		0x2 WIFI_PASSWORD
+		0x3 WIFI_ENCRYPT_TYPE..?
+		0x4 STATIC_IP
+	
+		
+		0x10 MODIFY_CONN + CONN_NUMBER
+			B0_lower nibble - connection number
+			B1 - connection meta data type
+				0 - IPv4 address
+					B3 - string of IP address "192.168.1.250"
+				1 - port number
+					B3_B4 (little endian)
+				2 - protocol 
+					B3= 0-UDP 1-TCP, 2-websocket, 3... encrpyted?? HTTP??
+				3 - IPv6 address...?
+
+

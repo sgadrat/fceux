@@ -478,6 +478,7 @@
     <ClCompile Include="..\src\boards\mihunche.cpp" />
     <ClCompile Include="..\src\boards\mmc2and4.cpp" />
     <ClCompile Include="..\src\boards\mongoose.c" />
+    <ClCompile Include="..\src\boards\nesnet.cpp" />
     <ClCompile Include="..\src\boards\onebus.cpp" />
     <ClCompile Include="..\src\boards\pec-586.cpp" />
     <ClCompile Include="..\src\boards\rainbow512.cpp" />
