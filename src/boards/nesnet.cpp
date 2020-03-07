@@ -22,72 +22,13 @@
 //////////////////////////////////////
 // Mapper implementation
 
-namespace {
-
-/* Flash write unlock sequence logic */
-
-enum class flash_write_mode_t : uint8 {
-	WRITE_DISABLED,
-	ERASE_SECTOR,
-	WRITE_BYTE,
-};
-
-class FlashSequenceCounter {
-public:
-	FlashSequenceCounter(std::array<uint32, 5> const& sequence_addresses);
-	void reset();
-	flash_write_mode_t addWrite(uint32 address, uint8 value);
-private:
-	std::array<uint32, 5> sequence_addresses;
-	uint8 sequence_position = 0;
-};
-
-FlashSequenceCounter::FlashSequenceCounter(std::array<uint32, 5> const& sequence_addresses)
-: sequence_addresses(sequence_addresses)
-{
-}
-
-void FlashSequenceCounter::reset() {
-	this->sequence_position = 0;
-}
-
-flash_write_mode_t FlashSequenceCounter::addWrite(uint32 address, uint8 value) {
-	uint8 const sequence_values[5] = {0xaa, 0x55, 0x80, 0xaa, 0x55};
-
-	if (address == this->sequence_addresses[this->sequence_position] && value == sequence_values[this->sequence_position]) {
-		++this->sequence_position;
-		if (this->sequence_position == 5) {
-			return flash_write_mode_t::ERASE_SECTOR;
-		}else {
-			return flash_write_mode_t::WRITE_DISABLED;
-		}
-	}else if (this->sequence_position == 2 && value == 0xa0) {
-		return flash_write_mode_t::WRITE_BYTE;
-	}else {
-		this->reset();
-		return flash_write_mode_t::WRITE_DISABLED;
-	}
-}
-
-}
-
 /* Mapper state */
 
 static uint8 *WRAM = NULL;
 static uint32 WRAMSIZE;
-static uint8 * flash_prg = NULL;
-static bool * flash_prg_written = NULL;
-static uint32 const flash_prg_size = 32 * 1024;
-static uint8 * flash_chr = NULL;
-static bool * flash_chr_written = NULL;
-static uint32 const flash_chr_size = 8 * 1024;
 static EspFirmware *esp = NULL;
 static bool esp_enable = true;
 static bool irq_enable = true;
-static FlashSequenceCounter flash_prg_sequence_counter({0xd555, 0xaaaa, 0xd555, 0xd555, 0xaaaa});
-static flash_write_mode_t flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-static FlashSequenceCounter flash_chr_sequence_counter({0x1555, 0x0aaa, 0x1555, 0x1555, 0x0aaa});
-static flash_write_mode_t flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
 
 /* ESP interface */
 
@@ -125,106 +66,6 @@ static void NESNETMapIrq(int32) {
 	}
 }
 
-/* Flash memory writing logic */
-
-DECLFW(NESNETWriteFlash) {
-	assert(0x8000 <= A && A <= 0xffff);
-	UDBG("NESNET write flash %04x => %02x\n", A, V);
-	bool reset_flash_mode = false;
-	switch (flash_prg_write_mode) {
-		case flash_write_mode_t::WRITE_DISABLED:
-			flash_prg_write_mode = flash_prg_sequence_counter.addWrite(A, V);
-			break;
-		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("NESNET erase sector %04x %02x\n", A, V);
-			if (A == 0x8000 || A == 0x9000 || A == 0xa000 || A == 0xb000 || A == 0xc000 || A == 0xd000 || A == 0xe000 || A == 0xf000) {
-				::memset(flash_prg + (A - 0x8000), 0xff, 0x1000);
-				for (uint32 i = A; i < A + 0x1000; ++i) {
-					flash_prg_written[i - 0x8000] = true;
-				}
-				for (uint32_t c = 0; c < 0x1000; ++c) {
-					UDBG("%02x", flash_prg[(A - 0x8000) + c]);
-				}
-				UDBG("\n");
-			}
-			reset_flash_mode = true;
-			break;
-		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("NESNET write byte %04x %02x (previous=%02x)\n", A, V, flash_prg[A - 0x8000]);
-			flash_prg[A - 0x8000] &= V;
-			flash_prg_written[A - 0x8000] = true;
-			reset_flash_mode = true;
-			break;
-	};
-
-	if (reset_flash_mode) {
-		flash_prg_sequence_counter.reset();
-		flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-	}
-}
-
-DECLFR(NESNETReadFlash) {
-	assert(0x8000 <= A && A <= 0xffff);
-	//UDBG("NESNET read flash %04x\n", A);
-	if (flash_prg_written[A - 0x8000]) {
-		//UDBG("NESNET    read from flash %04x => %02x\n", A, flash[A - 0x8000]);
-		return flash_prg[A - 0x8000];
-	}
-	//UDBG("NESNET    from PRG\n");
-	return CartBR(A);
-}
-
-static void NESNETWritePPUFlash(uint32 A, uint8 V) {
-	assert(A <= 0x1fff);
-	UDBG("NESNET write PPU flash %04x => %02x\n", A, V);
-	bool reset_flash_mode = false;
-	switch (flash_chr_write_mode) {
-		case flash_write_mode_t::WRITE_DISABLED:
-			flash_chr_write_mode = flash_chr_sequence_counter.addWrite(A, V);
-			break;
-		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("NESNET erase CHR sector %04x %02x\n", A, V);
-			if (A == 0x0000 || A == 0x0800 || A == 0x1000 || A == 0x1800) {
-				::memset(flash_chr + A, 0xff, 0x0800);
-				for (uint32 i = A; i < A + 0x0800; ++i) {
-					flash_chr_written[i] = true;
-				}
-				for (uint32_t c = 0; c < 0x0800; ++c) {
-					UDBG("%02x", flash_chr[A + c]);
-				}
-				UDBG("\n");
-			}
-			reset_flash_mode = true;
-			break;
-		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("NESNET write CHR byte %04x %02x (previous=%02x)\n", A, V, flash_chr[A]);
-			flash_chr[A] &= V;
-			flash_chr_written[A] = true;
-			reset_flash_mode = true;
-			break;
-	};
-
-	if (reset_flash_mode) {
-		flash_chr_sequence_counter.reset();
-		flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
-	}
-}
-
-static void NESNETPPUWrite(uint32 A, uint8 V) {
-	if (A < 0x2000) {
-		NESNETWritePPUFlash(A, V);
-	}
-	FFCEUX_PPUWrite_Default(A, V);
-}
-
-uint8 FASTCALL NESNETPPURead(uint32 A) {
-	if (A < 0x2000 && flash_chr_written[A]) {
-		if (PPU_hook) PPU_hook(A);
-		return flash_chr[A];
-	}
-	return FFCEUX_PPURead_Default(A);
-}
-
 /* Mapper initialization and cleaning */
 
 static void LatchClose(void) {
@@ -233,20 +74,6 @@ static void LatchClose(void) {
 		FCEU_gfree(WRAM);
 	}
 	WRAM = NULL;
-
-	if (flash_prg) {
-		FCEU_gfree(flash_prg);
-		FCEU_gfree(flash_prg_written);
-	}
-	flash_prg = NULL;
-	flash_prg_written = NULL;
-
-	if (flash_chr) {
-		FCEU_gfree(flash_chr);
-		FCEU_gfree(flash_chr_written);
-	}
-	flash_chr = NULL;
-	flash_chr_written = NULL;
 
 	delete esp;
 }
@@ -260,6 +87,7 @@ static void NESNETPower(void) {
 
 	SetReadHandler(0x6000, 0x7FFF, CartBR);
 	SetWriteHandler(0x6000, 0x7FFF, CartBW);
+	SetReadHandler(0x8000, 0xFFFF, CartBR);
 
 	FCEU_CheatAddRAM(WRAMSIZE >> 10, 0x6000, WRAM);
 
@@ -268,36 +96,15 @@ static void NESNETPower(void) {
 	SetWriteHandler(0x5001, 0x5001, NESNETWriteFlags);
 	SetReadHandler(0x5001, 0x5001, NESNETReadFlags);
 
-	SetReadHandler(0x8000, 0xFFFF, NESNETReadFlash);
-	SetWriteHandler(0x8000, 0xFFFF, NESNETWriteFlash);
-
 	esp = new BrokeStudioFirmware;
 	esp_enable = true;
 	irq_enable = true;
-	flash_prg_sequence_counter.reset();
-	flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-	flash_chr_sequence_counter.reset();
-	flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
 }
 
 void NESNET_Init(CartInfo *info) {
 	UDBG("NESNET init\n");
 	info->Power = NESNETPower;
 	info->Close = LatchClose;
-
-	// Initialize flash PRG
-	flash_prg = (uint8*)FCEU_gmalloc(flash_prg_size);
-	flash_prg_written = (bool*)FCEU_gmalloc(flash_prg_size * sizeof(bool));
-	::memset(flash_prg_written, 0, flash_prg_size * sizeof(bool));
-	//TODO AddExState
-	//TODO info->SaveGame[] = flash ; info->SaveGame[] = flash_written
-
-	// Initialize flash CHR
-	flash_chr = (uint8*)FCEU_gmalloc(flash_chr_size);
-	flash_chr_written = (bool*)FCEU_gmalloc(flash_chr_size * sizeof(bool));
-	::memset(flash_chr_written, 0, flash_chr_size * sizeof(bool));
-	//TODO AddExState
-	//TODO info->SaveGame[] = flash ; info->SaveGame[] = flash_written
 
 	//TODO is wram really necessary?
 	WRAMSIZE = 8192;
@@ -311,7 +118,4 @@ void NESNET_Init(CartInfo *info) {
 
 	// Set a hook on hblank to be able periodically check if we have to send an interupt
 	MapIRQHook = NESNETMapIrq;
-
-	FFCEUX_PPURead = NESNETPPURead;
-	FFCEUX_PPUWrite = NESNETPPUWrite;
 }
