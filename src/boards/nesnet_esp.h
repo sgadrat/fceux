@@ -4,6 +4,8 @@
 #include "../types.h"
 #include "esp.h"
 
+#include <vector>
+
 class InlFirmware : public EspFirmware {
 public:
 	~InlFirmware() = default;
@@ -15,11 +17,12 @@ public:
 	bool getGpio15() override { return false; }
 
 private:
-	void cmdHandlerVariable(uint8 cmd);
-	void cmdHandlerSpecial(uint8 cmd);
-	void cmdHandlerMessage(uint8 cmd);
+	void cmdHandlerVariable();
+	void cmdHandlerSpecial();
+	void cmdHandlerMessage();
 
 	uint8 data_register = 0;
+	std::vector<uint8> command_buffer;
 };
 
 #endif

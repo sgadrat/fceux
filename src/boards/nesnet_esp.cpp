@@ -23,43 +23,80 @@ namespace {
 	constexpr uint8 SPECIAL_CMD_MARK_READ = 0b0001;
 	constexpr uint8 SPECIAL_CMD_MSG_POLL = 0b1001;
 	constexpr uint8 SPECIAL_CMD_MSG_SENT = 0b1010;
+
+	constexpr uint8 MESSAGE_CMD_LONG_MED_MASK = 0b00100000;
+	constexpr uint8 MESSAGE_CMD_MED_SIZE_MASK = 0b00001111;
+
+	CommandType getCommandType(uint8 const command_byte) {
+		CommandType cmd_type = CommandType::MESSAGE;
+		if (command_byte & COMMAND_TYPE_VARIABLE_FLAG) {
+			cmd_type = CommandType::VARIABLE;
+		}else if (command_byte & COMMAND_TYPE_SPECIAL_FLAG) {
+			cmd_type = CommandType::SPECIAL;
+		}
+		return cmd_type;
+	}
+
+	bool commandComplete(std::vector<uint8> const& buffer) {
+		if (buffer.empty()) {
+			return false;
+		}
+
+		switch (getCommandType(buffer[0])) {
+		case CommandType::VARIABLE:
+			return buffer.size() >= 2;
+		case CommandType::SPECIAL:
+			return buffer.size() >= 1;
+		case CommandType::MESSAGE: {
+			bool medium = buffer[0] & MESSAGE_CMD_LONG_MED_MASK;
+			if (medium) {
+				return buffer.size() >= 1 + (buffer[0] & MESSAGE_CMD_MED_SIZE_MASK);
+			}else {
+				if (buffer.size() < 2) {
+					return false;
+				}
+				return buffer.size() >= 2 + buffer[1];
+			}
+		}
+		default:
+			return false;
+		};
+	}
 }
 
 void InlFirmware::rx(uint8 v) {
-	// Store command in data register
+	// Store byte in data register
 	this->data_register = v;
 
-	// Decode command type
-	CommandType cmd_type = CommandType::MESSAGE;
-	if (v & COMMAND_TYPE_VARIABLE_FLAG) {
-		cmd_type = CommandType::VARIABLE;
-	}else if (v & COMMAND_TYPE_SPECIAL_FLAG) {
-		cmd_type = CommandType::SPECIAL;
+	// Bufferise the byte and handle the command if it is complete
+	this->command_buffer.push_back(v);
+	if (commandComplete(this->command_buffer)) {
+		// Call apropriate command handler
+		switch (getCommandType(v)) {
+		case CommandType::VARIABLE:
+			this->cmdHandlerVariable();
+			break;
+		case CommandType::SPECIAL:
+			this->cmdHandlerSpecial();
+			break;
+		case CommandType::MESSAGE:
+			this->cmdHandlerMessage();
+			break;
+		};
+
+		// Clear command buffer
+		this->command_buffer.clear();
 	}
-
-	// Call adequate command handler
-	switch (cmd_type) {
-	case CommandType::VARIABLE:
-		this->cmdHandlerVariable(v);
-		break;
-	case CommandType::SPECIAL:
-		this->cmdHandlerSpecial(v);
-		break;
-	case CommandType::MESSAGE:
-		this->cmdHandlerMessage(v);
-		break;
-	};
 }
 
 
-void InlFirmware::cmdHandlerVariable(uint8 cmd) {
+void InlFirmware::cmdHandlerVariable() {
 	//TODO
-	(void)cmd;
 }
 
-void InlFirmware::cmdHandlerSpecial(uint8 cmd) {
+void InlFirmware::cmdHandlerSpecial() {
 	const uint8 special_cmd_mask = 0b00001111;
-	cmd = cmd & special_cmd_mask;
+	const uint8 cmd = this->command_buffer[0] & special_cmd_mask;
 
 	switch (cmd) {
 	case SPECIAL_CMD_RESET:
@@ -70,9 +107,8 @@ void InlFirmware::cmdHandlerSpecial(uint8 cmd) {
 	};
 }
 
-void InlFirmware::cmdHandlerMessage(uint8 cmd) {
+void InlFirmware::cmdHandlerMessage() {
 	//TODO
-	(void)cmd;
 }
 
 uint8 InlFirmware::tx() {
