@@ -3,7 +3,7 @@
 
 #include "easywsclient.hpp"
 #include "mongoose.h"
-#include "rainbow_esp.h"
+#include "nesnet_esp.h"
 
 #include <algorithm>
 #include <array>
@@ -97,7 +97,7 @@ static void NESNETPower(void) {
 	SetWriteHandler(0x5001, 0x5001, NESNETWriteFlags);
 	SetReadHandler(0x5001, 0x5001, NESNETReadFlags);
 
-	esp = new BrokeStudioFirmware;
+	esp = new InlFirmware;
 	esp_enable = true;
 	irq_enable = true;
 }

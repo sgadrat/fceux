@@ -38,7 +38,7 @@ credits_end:
 #echo *** Error: Code occupies too much space
 #else
 .dsb $fffa-*, 0              ;aligning
-.word nmi                    ;entry point for VBlank interrupt  (NMI)
-.word reset                  ;entry point for program start     (RESET)
-.word sample_irq_process_irq ;entry point for masking interrupt (IRQ)
+.word nmi    ;entry point for VBlank interrupt  (NMI)
+.word reset  ;entry point for program start     (RESET)
+.word reset  ;entry point for masking interrupt (IRQ)
 #endif
