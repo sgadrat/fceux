@@ -11,21 +11,7 @@
 #include <deque>
 #include <thread>
 
-//////////////////////////////////////
-// Abstract ESP firmware interface
-
-class EspFirmware {
-public:
-	virtual ~EspFirmware() = default;
-
-	// Communication pins (dont care about UART details, directly transmit bytes)
-	virtual void rx(uint8 v) = 0;
-	virtual uint8 tx() = 0;
-
-	// General purpose I/O pins
-	virtual void setGpio15(bool v) = 0;
-	virtual bool getGpio15() = 0;
-};
+#include "esp.h"
 
 //////////////////////////////////////
 // BrokeStudio's ESP firmware implementation

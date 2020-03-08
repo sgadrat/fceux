@@ -43,17 +43,18 @@ static DECLFR(NESNETRead) {
 }
 
 static DECLFW(NESNETWriteFlags) {
-	UDBG("NESNET write %04x %02x\n", A, V);
-	esp_enable = V & 0x01;
-	irq_enable = V & 0x40;
+	UDBG("NESNET write flags %04x <= %02x (ignored)\n", A, V);
 }
 
 static DECLFR(NESNETReadFlags) {
-	uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
-	uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
-	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
-	UDBG("NESNET read flags %04x => %02x\n", A, esp_rts_flag | esp_enable_flag | irq_enable_flag);
-	return esp_rts_flag | esp_enable_flag | irq_enable_flag;
+	// Always return Write ready (bit 7 set) and Read ready (bit 6 unset)
+	//   These are used in actual mapper because of hardware speed limitation.
+	//   To be confirmed: UART transfer rate coupled with a one byte buffer on the mapper
+	//   If exact, the one byte buffer could be emulated to better match hardware, for now all
+	//   read/write on $5000 are directly sent to esp object.
+	const uint8 flags = 0b10000000;
+	UDBG("NESNET read flags %04x => %02x`n", a, flags);
+	return flags;
 }
 
 static void NESNETMapIrq(int32) {
