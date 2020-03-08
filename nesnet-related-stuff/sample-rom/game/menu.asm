@@ -44,7 +44,9 @@ nametable_data:
 .byt                                                     $07, $08,  $10, $12, $ff, $ff,  $16, $08, $0f, $08,  $06, $17
 .byt ZIPNT_ZEROS(10+32*2+4)
 .byt                      $15, $08, $16, $08,  $17, $ff, $08, $16,  $13
-.byt ZIPNT_ZEROS(19+32*4)
+.byt ZIPNT_ZEROS(19+4)
+.byt                      $10, $08, $16, $16,  $04, $0a, $08, $16
+.byt ZIPNT_ZEROS(20+32*3)
 ;    -------------------  -------------------  -------------------  -------------------  -------------------  -------------------  -------------------  -------------------
 .byt ZIPNT_ZEROS(18+32*6)
 .byt ZIPNT_ZEROS(32*7)
@@ -101,7 +103,7 @@ menu_screen_tick:
 	end:
 	rts
 
-NB_OPTIONS = 1
+NB_OPTIONS = 2
 options_value:
-.byt GAME_STATE_RESET_ESP
+.byt GAME_STATE_RESET_ESP, GAME_STATE_SAMPLE_MESSAGES
 .)

@@ -61,3 +61,82 @@ reset_esp:
 
 	rts ;reset_esp
 .)
+
+;tmpfield1 -> message to send (pascal style string first byte is length)
+;X = length in bytes 1-15 bytes, 0 currently invalid (could be used for special case)
+;medium messages are always connection #0
+send_med_msg:
+.(
+	wait_command:
+		bit ESP_STATUS
+		BWC(wait_command)
+
+	;write command
+	txa
+	ora #(NN_WR+NN_MED)
+	sta ESP_DATA
+
+	;clear message index
+	ldy #0
+
+	write_data:
+
+		;load data
+		lda (tmpfield1), Y
+
+		wait_data:
+			bit ESP_STATUS
+			BWC(wait_data)
+
+		;write data
+		sta ESP_DATA
+
+		iny ;index
+		dex ;count
+		bne write_data
+
+	rts ;send_med_msg
+.)
+
+;tmpfield1 -> message to send (pascal style string first byte is length)
+;X = length in bytes 1-255 bytes, 0 currently invalid (could be used for special case)
+;A = connection # (0-15)
+send_long_msg:
+.(
+	wait_command:
+		bit ESP_STATUS
+		BWC(wait_command)
+
+	;write command
+	ora #(NN_WR+NN_RAIN)
+	sta ESP_DATA
+
+	;write length
+	wait_length:
+		bit ESP_STATUS
+		BWC(wait_length)
+
+	txa
+	sta ESP_DATA
+
+	;clear message index
+	ldy #0
+
+	write_data:
+
+		;load data
+		lda (tmpfield1), Y
+
+		wait_data:
+			bit ESP_STATUS
+			BWC(wait_data)
+
+		;write data
+		sta ESP_DATA
+
+		iny ;index
+		dex ;count
+		bne write_data
+
+	rts ;send_long_msg
+.)
