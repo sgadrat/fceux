@@ -53,6 +53,11 @@ namespace {
 			return false;
 		}
 
+		if ((buffer[0] & 0xf0) == 0) {
+			// NEXT command: looks like a MESSAGE command, but does not care about size field
+			return true;
+		}
+
 		switch (getCommandType(buffer[0])) {
 		case CommandType::VARIABLE:
 			return buffer.size() >= 2;
@@ -151,7 +156,7 @@ void InlFirmware::cmdHandlerSpecial() {
 void InlFirmware::cmdHandlerMessage() {
 	ParsedMessageCommand message = parseMessageCommand(this->command_buffer);
 
-	if (message.size == 0 && !message.write) {
+	if (!message.write && !message.long_form) {
 		// NEXT command
 		//TODO
 		UDBG("TODO implement NEXT command\n");
