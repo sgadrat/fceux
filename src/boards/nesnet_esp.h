@@ -4,7 +4,13 @@
 #include "../types.h"
 #include "esp.h"
 
+//TODO simplify: here we are includeing a web server only for its macros standardizing winsocks
+#include "mongoose.h"
+
+#include <array>
 #include <vector>
+#include <string>
+#include <optional>
 
 class InlFirmware : public EspFirmware {
 public:
@@ -21,8 +27,46 @@ private:
 	void cmdHandlerSpecial();
 	void cmdHandlerMessage();
 
+	void initConnection(uint8 const connection_number);
+
 	uint8 data_register = 0;
 	std::vector<uint8> command_buffer;
+
+	struct ConnectionInfo {
+		// Cheap replacement for std::optional
+		template <typename T>
+		class my_optional {
+		public:
+			my_optional& operator=(T const& other) {
+				this->val = other;
+				this->init = true;
+				return *this;
+			}
+			bool has_value() const { return this->init; }
+			T const& value() const {
+				if (!this->has_value()) {
+					throw std::runtime_error("invalid access to empty optional");
+				}
+				return val;
+			}
+		private:
+			T val;
+			bool init = false;
+		};
+
+		my_optional<std::string> address;
+		my_optional<uint16> port;
+		my_optional<uint8> protocol;
+		bool isComplete() {
+			return this->address.has_value() && this->port.has_value() && this->protocol.has_value();
+		}
+	};
+	struct UdpConnection {
+		int fd = -1;
+		sockaddr_in server_addr;
+	};
+	std::array<ConnectionInfo, 8> connections_info;
+	std::array<UdpConnection, 8> connections;
 };
 
 #endif
