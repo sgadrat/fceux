@@ -8,7 +8,8 @@
 // Compatibility hacks
 typedef SSIZE_T ssize_t;
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
-#define cast_network_payload(x) reinterpret_cast<char const*>(x)
+#define cast_network_const_payload(x) reinterpret_cast<char const*>(x)
+#define cast_network_payload(x) reinterpret_cast<char*>(x)
 
 #else
 
@@ -20,7 +21,8 @@ typedef SSIZE_T ssize_t;
 #include <netinet/udp.h>
 
 // Compatibility hacks
-#define cast_network_payload(x) reinterpret_cast<void const*>(x)
+#define cast_network_const_payload(x) reinterpret_cast<void const*>(x)
+#define cast_network_payload(x) reinterpret_cast<void*>(x)
 
 #endif
 
@@ -171,6 +173,19 @@ void InlFirmware::cmdHandlerSpecial() {
 	case SPECIAL_CMD_MSG_SENT:
 		this->data_register = 0x00;
 		break;
+	case SPECIAL_CMD_MSG_POLL:
+		// Hack: should be done for any non-NEXT command
+		// If the current message is at least partially read, drop it and move to next
+		if (!this->message_buffers.empty() && (this->message_buffers.front().empty() || this->read_pointer != this->message_buffers.front().begin())) {
+			this->message_buffers.pop_front();
+			if (!this->message_buffers.empty()) {
+				this->read_pointer = this->message_buffers.front().begin();
+			}
+		}
+
+		this->receiveDataFromServer();
+		this->data_register = this->message_buffers.size();
+		break;
 	default:
 		UDBG("InlFrimware unknown special command %x (%02x)\n", cmd, this->data_register);
 	};
@@ -181,8 +196,10 @@ void InlFirmware::cmdHandlerMessage() {
 
 	if (!message.write && !message.long_form) {
 		// NEXT command
-		//TODO
-		UDBG("InlFrimware TODO implement NEXT command\n");
+		if (!this->message_buffers.empty() && this->read_pointer != this->message_buffers.front().end()) {
+			this->data_register = *this->read_pointer;
+			++this->read_pointer;
+		}
 	}else if (message.connection == 0xf) {
 		// Special message for ESP
 		if (message.size < 1) {
@@ -253,7 +270,7 @@ void InlFirmware::cmdHandlerMessage() {
 
 		// Send data
 		ssize_t n = sendto(
-			conn.fd, cast_network_payload(message.payload), message.size, 0,
+			conn.fd, cast_network_const_payload(message.payload), message.size, 0,
 			reinterpret_cast<sockaddr*>(&conn.server_addr), sizeof(sockaddr)
 		);
 		if (n == -1) {
@@ -290,6 +307,62 @@ void InlFirmware::initConnection(uint8 const connection_number) {
 	bind_addr.sin_port = htons(0);
 	bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	bind(conn.fd, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(sockaddr));
+}
+
+void InlFirmware::receiveDataFromServer() {
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	int max_fd = -1;
+	for (UdpConnection const& conn: this->connections) {
+		if (conn.fd < 0) {
+			continue;
+		}
+		if (conn.fd >= FD_SETSIZE) {
+			UDBG("InlFirmware too much file descriptors, some UDP connexions cannot receive data\n");
+		}
+		FD_SET(conn.fd, &rfds);
+		max_fd = std::max(conn.fd, max_fd);
+	}
+
+	timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	int n_readable = select(max_fd+1, &rfds, NULL, NULL, &tv);
+	if (n_readable == -1) {
+		UDBG("InlFirmware failed to check sockets for data: %s\n", strerror(errno));
+	}else if (n_readable > 0) {
+		for (UdpConnection const& conn: this->connections) {
+			if (FD_ISSET(conn.fd, &rfds)) {
+				size_t const MAX_DGRAM_SIZE = 1024; // Arbitrary value, Nesnet protocol impose no limit with its NEXT command idiom
+				std::vector<uint8> data;
+				data.resize(MAX_DGRAM_SIZE);
+				sockaddr_in addr_from;
+				socklen_t addr_from_len = sizeof(addr_from);
+				ssize_t msg_len = recvfrom(
+					conn.fd, cast_network_payload(data.data()), MAX_DGRAM_SIZE, 0,
+					reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
+				);
+				if (msg_len == -1) {
+					UDBG("InlFirmware failed to read UDP socket: %s\n", strerror(errno));
+				}else if (msg_len <= MAX_DGRAM_SIZE) {
+					UDBG("InlFirmware received UDP datagram of size %zd: ", msg_len);
+					for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
+						UDBG("%02x", *it);
+					}
+					UDBG("\n");
+					if (this->message_buffers.size() < 255) {
+						this->message_buffers.push_back(std::vector<uint8>(data.begin(), data.begin() + msg_len));
+						if (this->message_buffers.size() == 1) {
+							this->read_pointer = this->message_buffers.front().begin();
+						}
+					}
+				}else {
+					UDBG("InlFirmware received a bigger than expected UDP datagram\n");
+				}
+			}
+		}
+	}
 }
 
 uint8 InlFirmware::tx() {

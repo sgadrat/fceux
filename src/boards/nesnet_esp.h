@@ -8,9 +8,9 @@
 #include "mongoose.h"
 
 #include <array>
+#include <deque>
 #include <vector>
 #include <string>
-#include <optional>
 
 class InlFirmware : public EspFirmware {
 public:
@@ -28,9 +28,12 @@ private:
 	void cmdHandlerMessage();
 
 	void initConnection(uint8 const connection_number);
+	void receiveDataFromServer();
 
 	uint8 data_register = 0;
 	std::vector<uint8> command_buffer;
+	std::deque<std::vector<uint8>> message_buffers;
+	std::vector<uint8>::const_iterator read_pointer;
 
 	struct ConnectionInfo {
 		// Cheap replacement for std::optional

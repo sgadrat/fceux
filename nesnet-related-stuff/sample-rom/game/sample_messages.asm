@@ -1,3 +1,5 @@
+sample_messages_rcv_buffer = $400
+
 #define LONG_MSG(data,conn) \
 	lda #<(data+1) :\
 	sta tmpfield1 :\
@@ -86,37 +88,59 @@ nametable_attributes:
 
 sample_messages_tick:
 .(
-	; Do nothing until an input is confirmed (button pressed, then released)
-	lda controller_a_btns
-	bne end
-	cmp controller_a_last_frame_btns
-	beq end
+	; Send some messages when an input is confirmed (button pressed, then released)
+	.(
+		lda controller_a_btns
+		bne end
+		cmp controller_a_last_frame_btns
+		beq end
 
-#if 1
-		; Send a message in medium format
-		lda #<(med_msg+1)
-		sta tmpfield1
-		lda #>(med_msg+1)
-		sta tmpfield2
+			; Send a message in medium format
+			lda #<(med_msg+1)
+			sta tmpfield1
+			lda #>(med_msg+1)
+			sta tmpfield2
 
-		ldx med_msg
+			ldx med_msg
 
-		jsr send_med_msg
+			jsr send_med_msg
 
-		; Send a message in long format
-		lda #<(long_msg+1)
-		sta tmpfield1
-		lda #>(long_msg+1)
-		sta tmpfield2
+			; Send a message in long format
+			lda #<(long_msg+1)
+			sta tmpfield1
+			lda #>(long_msg+1)
+			sta tmpfield2
 
-		ldx long_msg
+			ldx long_msg
 
-		lda #1
+			lda #1
 
-		jsr send_long_msg
-#endif
+			jsr send_long_msg
 
-	end:
+		end:
+	.)
+
+	; Check message from connexions
+	.(
+		lda #NN_MSG_POLL
+		jsr send_cmd_get_reply
+		beq end
+
+			; Get message
+			lda #<(sample_messages_rcv_buffer+1)
+			sta tmpfield1
+			lda #>(sample_messages_rcv_buffer+1)
+			sta tmpfield2
+			ldx #15
+			jsr esp_get_msg
+
+			; Send message back to connexion #0
+			lda #15
+			sta sample_messages_rcv_buffer
+			LONG_MSG(sample_messages_rcv_buffer, #0)
+
+		end:
+	.)
 	rts
 
 	med_msg:

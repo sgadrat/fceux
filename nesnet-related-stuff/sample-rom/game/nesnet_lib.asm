@@ -140,3 +140,57 @@ send_long_msg:
 
 	rts ;send_long_msg
 .)
+
+;tmpfield1 -> location to store message
+;X = number of bytes to get
+esp_get_msg:
+.(
+	ldy #0 ;index
+
+	read_data:
+
+		;command
+		lda #NN_RD
+
+		wait_command:
+			bit ESP_STATUS
+			BWC(wait_command)
+
+		;write command
+		sta ESP_DATA
+
+		wait_data:
+			bit ESP_STATUS
+			BRS(wait_data)
+
+		;fetch data
+		lda ESP_DATA
+
+		;store data
+		sta (tmpfield1), Y
+
+		iny ;index
+		dex ;count
+		bne read_data
+
+	rts ;esp_get_msg
+.)
+
+;arg - A= command to send
+;ret - A= reply
+send_cmd_get_reply:
+.(
+	wait_command:
+		bit ESP_STATUS
+		BWC(wait_command)
+
+	sta ESP_DATA
+
+	wait_reply:
+		bit ESP_STATUS
+		BRS(wait_reply)
+
+	lda ESP_DATA
+
+	rts ; send_cmd_get_reply
+.)
