@@ -55,6 +55,8 @@ namespace {
 	constexpr uint8 MESSAGE_CMD_MED_SIZE_MASK = 0b00001111;
 	constexpr uint8 MESSAGE_CMD_LONG_CONNECTION_MASK = 0b00001111;
 
+	constexpr uint8 VARIABLE_CMD_NUM_MASK = 0b00111111;
+
 	struct ParsedMessageCommand {
 		uint8 const* payload;
 		bool write;
@@ -85,7 +87,11 @@ namespace {
 
 		switch (getCommandType(buffer[0])) {
 		case CommandType::VARIABLE:
-			return buffer.size() >= 2;
+			if ((buffer[0] & COMMAND_WRITE_FLAG) != 0) {
+				return buffer.size() >= 2;
+			}else {
+				return true;
+			}
 		case CommandType::SPECIAL:
 			return buffer.size() >= 1;
 		case CommandType::MESSAGE: {
@@ -158,8 +164,20 @@ void InlFirmware::rx(uint8 v) {
 
 
 void InlFirmware::cmdHandlerVariable() {
-	//TODO
-	UDBG("InlFrimware TODO implement variable protocol\n");
+	// Parse opcode
+	bool write = this->command_buffer[0] & COMMAND_WRITE_FLAG;
+	uint8 var_num = this->command_buffer[0] & VARIABLE_CMD_NUM_MASK;
+
+	// Handle command
+	if (write) {
+		std::vector<uint8> msg = {'W', 'V', 'N', 0, 0};
+		msg[3] = var_num + '0';
+		msg[4] = this->command_buffer[1];
+		this->sendMessage(msg, 0);
+	}else {
+		this->receiveDataFromServer();
+		this->data_register = this->incoming_variables[var_num];
+	}
 }
 
 void InlFirmware::cmdHandlerSpecial() {
@@ -261,23 +279,7 @@ void InlFirmware::cmdHandlerMessage() {
 		}
 		UDBG("\n");
 
-		// Check connection status
-		UdpConnection& conn = this->connections.at(message.connection);
-		if (conn.fd == -1) {
-			UDBG("InlFrimware unable to send message: conection is not open\n");
-			return;
-		}
-
-		// Send data
-		ssize_t n = sendto(
-			conn.fd, cast_network_const_payload(message.payload), message.size, 0,
-			reinterpret_cast<sockaddr*>(&conn.server_addr), sizeof(sockaddr)
-		);
-		if (n == -1) {
-			UDBG("InlFirmware UDP send failed: %s\n", strerror(errno));
-		}else if (n != message.size) {
-			UDBG("InlFirmware UDP sent partial message\n");
-		}
+		this->sendMessage(std::vector<uint8>(message.payload, message.payload + message.size), message.connection);
 	}
 }
 
@@ -351,17 +353,70 @@ void InlFirmware::receiveDataFromServer() {
 						UDBG("%02x", *it);
 					}
 					UDBG("\n");
-					if (this->message_buffers.size() < 255) {
-						this->message_buffers.push_back(std::vector<uint8>(data.begin(), data.begin() + msg_len));
-						if (this->message_buffers.size() == 1) {
-							this->read_pointer = this->message_buffers.front().begin();
-						}
-					}
+
+					data.resize(msg_len);
+					this->receivedNetworkMessage(data);
 				}else {
 					UDBG("InlFirmware received a bigger than expected UDP datagram\n");
 				}
 			}
 		}
+	}
+}
+
+void InlFirmware::receivedNetworkMessage(std::vector<uint8> const& msg) {
+	// Handle variable protocol
+	if (
+		msg.size() > 4 &&
+		(
+			std::vector<uint8>(msg.begin(), msg.begin()+3) == std::vector<uint8>{'W', 'V', 'A'} ||
+			std::vector<uint8>(msg.begin(), msg.begin()+3) == std::vector<uint8>{'W', 'V', 'N'}
+		)
+	)
+	{
+		size_t payload_size = std::min(this->incoming_variables.size(), msg.size() - 4);
+		//TODO sample code seems to skip one byte at the end "packetSize-HEADERLEN-NEWLINE"
+		std::array<uint8, NUM_VARIABLES>::iterator current_variable = this->incoming_variables.begin();
+		if (*(msg.begin()+2) == 'N') {
+			payload_size = 1;
+			uint8 var_num = (*(msg.begin()+3) - '0') % this->incoming_variables.size(); //TODO protocol may evolve to directly get the number in binary
+			current_variable = this->incoming_variables.begin() + var_num;
+		}
+
+		for (size_t i = 0; i < payload_size && current_variable != this->incoming_variables.end(); ++i) {
+			*current_variable = *(msg.begin()+4+i);
+			++current_variable;
+		}
+
+		return; // Avoid falling through to normal message handling
+	}
+
+	// Not variable protocol, put it in messages queue
+	if (this->message_buffers.size() < 255) {
+		this->message_buffers.push_back(std::vector<uint8>(msg.begin(), msg.end()));
+		if (this->message_buffers.size() == 1) {
+			this->read_pointer = this->message_buffers.front().begin();
+		}
+	}
+}
+
+void InlFirmware::sendMessage(std::vector<uint8> const& payload, uint8 connexion_number) {
+	// Check connection status
+	UdpConnection& conn = this->connections.at(connexion_number);
+	if (conn.fd == -1) {
+		UDBG("InlFrimware unable to send message: conection is not open\n");
+		return;
+	}
+
+	// Send data
+	ssize_t n = sendto(
+		conn.fd, cast_network_const_payload(payload.data()), payload.size(), 0,
+		reinterpret_cast<sockaddr*>(&conn.server_addr), sizeof(sockaddr)
+	);
+	if (n == -1) {
+		UDBG("InlFirmware UDP send failed: %s\n", strerror(errno));
+	}else if (n != payload.size()) {
+		UDBG("InlFirmware UDP sent partial message\n");
 	}
 }
 

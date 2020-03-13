@@ -40,6 +40,58 @@ NN_SFAST= %00001000 ;//ESP responds to these commands quicker
 	NN_MSG_POLL = NN_SPEC+1+NN_SFAST
 	NN_MSG_SENT = NN_SPEC+2+NN_SFAST
 
+;A= outgoing variable number to update 0-63
+;X= data value to write
+;Y unused
+wr_esp_var:
+.(
+	;wait $5001.7 set
+	wait_command:
+		bit ESP_STATUS  ;Wreg->Nflag Rreg->Vflag
+		BWC(wait_command)  ;branch if Wclear
+
+	;write command
+	ora #(NN_WR+NN_VAR) ;Wr-b7 varmode-b6 var#b5-0
+	sta ESP_DATA
+
+	;wait $5001.7 set
+	wait_data:
+		bit ESP_STATUS  ;Wreg->Nflag Rreg->Vflag
+		BWC(wait_data)  ;branch if Wclear
+
+	;write data
+	stx ESP_DATA
+
+	rts ;wr_esp_var
+.)
+
+;A= incoming variable number to fetch 0-63
+;X unused
+;Y unused
+;return
+;A requested variable value (data)
+rd_esp_var:
+.(
+	;wait $5001.7 set
+	wait_command:
+		bit ESP_STATUS  ;Wreg->Nflag Rreg->Vflag
+		BWC(wait_command)  ;branch if Wclear
+
+	;write command
+	ora #(NN_RD+NN_VAR) ;Wr-b7 varmode-b6 var#b5-0
+	sta ESP_DATA
+
+	;wait $5001.6 clear
+	wait_data:
+		bit ESP_STATUS  ;Wreg->Nflag Rreg->Vflag
+		BRS(wait_data)  ;branch if Rset
+
+	;read data
+	lda ESP_DATA
+
+	rts ;rd_esp_var
+.)
+
 ;Call when powering up, if RESET_VAL isn't returned, the ESP isn't running yet, or it's locked up.?
 ;TODO ensure that command gets written the first time, and NN_RESET_VAL didn't happen to already be in the SPI reg
 ;RETURN A:

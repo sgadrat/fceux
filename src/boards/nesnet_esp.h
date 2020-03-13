@@ -29,11 +29,17 @@ private:
 
 	void initConnection(uint8 const connection_number);
 	void receiveDataFromServer();
+	void receivedNetworkMessage(std::vector<uint8> const& msg);
+
+	void sendMessage(std::vector<uint8> const& payload, uint8 connexion_number);
+
+	static constexpr size_t NUM_VARIABLES = 64;
 
 	uint8 data_register = 0;
 	std::vector<uint8> command_buffer;
 	std::deque<std::vector<uint8>> message_buffers;
 	std::vector<uint8>::const_iterator read_pointer;
+	std::array<uint8, NUM_VARIABLES> incoming_variables; //TODO we may want to zero-initialize this array
 
 	struct ConnectionInfo {
 		// Cheap replacement for std::optional
