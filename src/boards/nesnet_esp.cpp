@@ -188,6 +188,11 @@ void InlFirmware::cmdHandlerSpecial() {
 	case SPECIAL_CMD_RESET:
 		this->data_register = 0xa5;
 		break;
+	case SPECIAL_CMD_MARK_READ:
+		if (!this->message_buffers.empty()) {
+			this->message_buffers.pop_front();
+		}
+		break;
 	case SPECIAL_CMD_MSG_SENT:
 		this->data_register = 0x00;
 		break;
@@ -365,17 +370,15 @@ void InlFirmware::receiveDataFromServer() {
 }
 
 void InlFirmware::receivedNetworkMessage(std::vector<uint8> const& msg) {
-	// Handle variable protocol
+	size_t const HEADER_LEN = 4;
+	size_t const NEWLINE_LEN = 1;
 	if (
-		msg.size() > 4 &&
-		(
-			std::vector<uint8>(msg.begin(), msg.begin()+3) == std::vector<uint8>{'W', 'V', 'A'} ||
-			std::vector<uint8>(msg.begin(), msg.begin()+3) == std::vector<uint8>{'W', 'V', 'N'}
-		)
+		msg.size() > HEADER_LEN + NEWLINE_LEN &&
+		msg[0] == 'W' && msg[1] == 'V' && (msg[2] == 'A' || msg[2] == 'N')
 	)
 	{
-		size_t payload_size = std::min(this->incoming_variables.size(), msg.size() - 4);
-		//TODO sample code seems to skip one byte at the end "packetSize-HEADERLEN-NEWLINE"
+		// Variable protocol, update incoming variables
+		size_t payload_size = std::min(this->incoming_variables.size(), msg.size() - HEADER_LEN - NEWLINE_LEN);
 		std::array<uint8, NUM_VARIABLES>::iterator current_variable = this->incoming_variables.begin();
 		if (*(msg.begin()+2) == 'N') {
 			payload_size = 1;
@@ -384,19 +387,23 @@ void InlFirmware::receivedNetworkMessage(std::vector<uint8> const& msg) {
 		}
 
 		for (size_t i = 0; i < payload_size && current_variable != this->incoming_variables.end(); ++i) {
-			*current_variable = *(msg.begin()+4+i);
+			*current_variable = *(msg.begin()+HEADER_LEN+i);
 			++current_variable;
 		}
-
-		return; // Avoid falling through to normal message handling
-	}
-
-	// Not variable protocol, put it in messages queue
-	if (this->message_buffers.size() < 255) {
-		this->message_buffers.push_back(std::vector<uint8>(msg.begin(), msg.end()));
-		if (this->message_buffers.size() == 1) {
-			this->read_pointer = this->message_buffers.front().begin();
+	}else if (msg.size() >= HEADER_LEN + NEWLINE_LEN && msg[0] == 'M') {
+		// New message, put it in messages queue
+		if (this->message_buffers.size() < 255) {
+			this->message_buffers.push_back(std::vector<uint8>(msg.begin()+HEADER_LEN, msg.end()-NEWLINE_LEN));
+			if (this->message_buffers.size() == 1) {
+				this->read_pointer = this->message_buffers.front().begin();
+			}
 		}
+	}else {
+		UDBG("InlFirmware unknown network message received: ");
+		for (uint8 c: msg) {
+			UDBG("%02x", c);
+		}
+		UDBG("\n");
 	}
 }
 
