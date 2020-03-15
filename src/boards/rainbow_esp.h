@@ -42,11 +42,12 @@ private:
 		GET_RND_WORD,
 		GET_RND_WORD_RANGE,
 		GET_SERVER_STATUS,
-		CONNECT_TO_SERVER,
-		DISCONNECT_FROM_SERVER,
+		SET_SERVER_PROTOCOL, //TODO
+		GET_SERVER_SETTINGS, //TODO
+		SET_SERVER_SETTINGS, //TODO
+		CONNECT_TO_SERVER, //TODO changed name (check behaviour)
+		DISCONNECT_FROM_SERVER, //TODO changed name (check behaviour)
 		SEND_MESSAGE_TO_SERVER,
-		SEND_MESSAGE_TO_GAME,
-		SEND_UDP_TO_GAME,
 		FILE_OPEN,
 		FILE_CLOSE,
 		FILE_EXISTS,
@@ -56,6 +57,7 @@ private:
 		FILE_WRITE,
 		FILE_APPEND,
 		GET_FILE_LIST,
+		GET_FREE_FILE_ID, //TODO
 	};
 
 	// Defined message types from ESP to CPU
@@ -64,11 +66,18 @@ private:
 		FILE_EXISTS,
 		FILE_LIST,
 		FILE_DATA,
+		FILE_ID, //TODO
 		WIFI_STATUS,
 		SERVER_STATUS,
+		HOST_SETTINGS,
 		RND_BYTE,
 		RND_WORD,
 		MESSAGE_FROM_SERVER,
+	};
+
+	enum class server_protocol_t : uint8 {
+		WEBSOCKET,
+		UDP,
 	};
 
 	void processBufferedMessage();
@@ -100,6 +109,10 @@ private:
 	uint32 file_offset = 0;
 	uint8 working_path = 0;
 	uint8 working_file = NO_WORKING_FILE;
+
+	server_protocol_t active_protocol = server_protocol_t::WEBSOCKET;
+	std::string server_settings_address;
+	uint16_t server_settings_port = 0;
 
 	easywsclient::WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;

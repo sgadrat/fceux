@@ -39,8 +39,14 @@ sample_irq_screen_init:
 		; Unmask IRQs
 		cli
 
+		; Connect to server
+		ESP_SEND_CMD(connect_cmd)
+
 		rts
 	.)
+
+connect_cmd:
+.byt 1, TOESP_MSG_CONNECT_TO_SERVER
 
 palettes_data:
 ; Background

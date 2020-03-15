@@ -26,8 +26,14 @@ sample_noirq_screen_init:
 		sta tmpfield2
 		jsr draw_zipped_nametable
 
+		; Connect to server
+		ESP_SEND_CMD(connect_cmd)
+
 		rts
 	.)
+
+connect_cmd:
+.byt 1, TOESP_MSG_CONNECT_TO_SERVER
 
 palettes_data:
 ; Background

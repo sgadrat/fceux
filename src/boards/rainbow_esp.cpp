@@ -30,20 +30,32 @@ typedef SSIZE_T ssize_t;
 
 using easywsclient::WebSocket;
 
-#undef RAINBOW_DEBUG
-//define RAINBOW_DEBUG
+#define RAINBOW_DEBUG 1
 
-#ifdef RAINBOW_DEBUG
+#if RAINBOW_DEBUG >= 1
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
 #else
 #define UDBG(...)
 #endif
 
+#if RAINBOW_DEBUG >= 2
+#define UDBG_FLOOD(...) FCEU_printf(__VA_ARGS__)
+#else
+#define UDBG_FLOOD(...)
+#endif
+
 BrokeStudioFirmware::BrokeStudioFirmware() {
 	UDBG("RAINBOW BrokeStudioFirmware ctor\n");
 
-	// Start websocket client
-	this->openConnection();
+	// Get default host/port
+	char const* hostname = ::getenv("RAINBOW_SERVER_ADDR");
+	if (hostname == nullptr) hostname = "localhost";
+	this->server_settings_address = hostname;
+
+	char const* port_cstr = ::getenv("RAINBOW_SERVER_PORT");
+	if (port_cstr == nullptr) port_cstr = "3000";
+	std::istringstream port_iss(port_cstr);
+	port_iss >> this->server_settings_port;
 
 	// Start web server
 	this->httpd_run = true;
@@ -78,7 +90,7 @@ BrokeStudioFirmware::~BrokeStudioFirmware() {
 }
 
 void BrokeStudioFirmware::rx(uint8 v) {
-	UDBG("RAINBOW BrokeStudioFirmware rx %02x\n", v);
+	UDBG_FLOOD("RAINBOW BrokeStudioFirmware rx %02x\n", v);
 	if (this->msg_first_byte) {
 		this->msg_first_byte = false;
 		this->msg_length = v + 1;
@@ -92,7 +104,7 @@ void BrokeStudioFirmware::rx(uint8 v) {
 }
 
 uint8 BrokeStudioFirmware::tx() {
-	UDBG("RAINBOW BrokeStudioFirmware tx\n");
+	UDBG_FLOOD("RAINBOW BrokeStudioFirmware tx\n");
 
 	// Refresh buffer from network
 	this->receiveDataFromServer();
@@ -103,7 +115,7 @@ uint8 BrokeStudioFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
-	UDBG("RAINBOW BrokeStudioFirmware tx <= %02x\n", last_byte_read);
+	//UDBG("RAINBOW BrokeStudioFirmware tx <= %02x\n", last_byte_read);
 	return last_byte_read;
 }
 
@@ -116,7 +128,7 @@ bool BrokeStudioFirmware::getGpio15() {
 }
 
 void BrokeStudioFirmware::processBufferedMessage() {
-	assert(this->rx_buffer.size() >= 2); // Buffer must conatain exactly one message, minimal message is two bytes (length + type)
+	assert(this->rx_buffer.size() >= 2); // Buffer must contain exactly one message, minimal message is two bytes (length + type)
 	uint8 const message_size = this->rx_buffer.front();
 	assert(message_size >= 1); // minimal payload is one byte (type)
 	assert(this->rx_buffer.size() == static_cast<std::deque<uint8>::size_type>(message_size) + 1); // Buffer size must match declared payload size
@@ -193,7 +205,48 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->tx_buffer.push_back(last_byte_read);
 			this->tx_buffer.push_back(2);
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::SERVER_STATUS));
-			this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+			switch (this->active_protocol) {
+			case server_protocol_t::WEBSOCKET:
+				this->tx_buffer.push_back(this->socket != nullptr); // Server connection is ok if we succeed to open it
+				break;
+			case server_protocol_t::UDP:
+				this->tx_buffer.push_back(this->udp_socket != -1); // Considere server connection ok if we created a socket
+				break;
+			default:
+				this->tx_buffer.push_back(0); // Unknown active protocol, connection certainly broken
+			}
+			break;
+		case n2e_cmds_t::SET_SERVER_PROTOCOL: {
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_PROTOCOL\n");
+			if (message_size == 2) {
+				server_protocol_t const requested_protocol = static_cast<server_protocol_t>(this->rx_buffer.at(2));
+				if (requested_protocol > server_protocol_t::UDP) {
+					UDBG("RAINBOW BrokeStudioFirmware SET_SERVER_PROTOCOL: unknown protocol (%d)\n", requested_protocol);
+				}else {
+					this->active_protocol = requested_protocol;
+				}
+			}
+			break;
+		}
+		case n2e_cmds_t::GET_SERVER_SETTINGS:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_SETTINGS\n");
+			//NOTE the "no settings available" response is not implemented as we ensure a default one in the constructor
+			this->tx_buffer.push_back(last_byte_read);
+			this->tx_buffer.push_back(1 + 2 + this->server_settings_address.size());
+			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS));
+			this->tx_buffer.push_back(this->server_settings_port >> 8);
+			this->tx_buffer.push_back(this->server_settings_port & 0x0f);
+			this->tx_buffer.insert(this->tx_buffer.end(), this->server_settings_address.begin(), this->server_settings_address.end());
+			break;
+		case n2e_cmds_t::SET_SERVER_SETTINGS:
+			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_SETTINGS\n");
+			if (message_size >= 3) {
+				this->server_settings_port =
+					(static_cast<uint16_t>(this->rx_buffer.at(2)) << 8) +
+					(static_cast<uint16_t>(this->rx_buffer.at(3)))
+				;
+				this->server_settings_address = std::string(this->rx_buffer.begin()+4, this->rx_buffer.end());
+			}
 			break;
 		case n2e_cmds_t::CONNECT_TO_SERVER:
 			UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
@@ -203,21 +256,22 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
 			this->closeConnection();
 			break;
-		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER:
-		case n2e_cmds_t::SEND_MESSAGE_TO_GAME: {
+		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
 			UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
 			uint8 const payload_size = this->rx_buffer.size() - 2;
 			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
 			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
-			this->sendMessageToServer(payload_begin, payload_end);
-			break;
-		}
-		case n2e_cmds_t::SEND_UDP_TO_GAME: {
-			UDBG("RAINBOW BrokeStudioFirmware received message SEND_UDP_TO_GAME\n");
-			uint8 const payload_size = this->rx_buffer.size() - 2;
-			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
-			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
-			this->sendUdpDatagramToServer(payload_begin, payload_end);
+
+			switch (this->active_protocol) {
+			case server_protocol_t::WEBSOCKET:
+				this->sendMessageToServer(payload_begin, payload_end);
+				break;
+			case server_protocol_t::UDP:
+				this->sendUdpDatagramToServer(payload_begin, payload_end);
+				break;
+			default:
+				UDBG("RAINBOW BrokeStudioFirmware active protocol (%d) not implemented\n", this->active_protocol);
+			};
 			break;
 		}
 		case n2e_cmds_t::FILE_OPEN:
@@ -488,6 +542,8 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 }
 
 void BrokeStudioFirmware::closeConnection() {
+	//TODO close UDP socket
+
 	// Do nothing if connection is already closed
 	if (this->socket == nullptr) {
 		return;
@@ -517,46 +573,40 @@ void BrokeStudioFirmware::closeConnection() {
 void BrokeStudioFirmware::openConnection() {
 	this->closeConnection();
 
-	// Get host/port
-	char const* hostname = ::getenv("RAINBOW_SERVER_ADDR");
-	if (hostname == nullptr) hostname = "localhost";
-
-	char const* port_cstr = ::getenv("RAINBOW_SERVER_PORT");
-	if (port_cstr == nullptr) port_cstr = "3000";
-	std::istringstream port_iss(port_cstr);
-	uint16_t port;
-	port_iss >> port;
-
-	// Create websocket
-	WebSocket::pointer ws = WebSocket::from_url(std::string("ws://") + hostname + ":" + port_cstr);
-	if (!ws) {
-		UDBG("RAINBOW unable to connect to WebSocket server\n");
+	if (this->active_protocol == server_protocol_t::WEBSOCKET) {
+		// Create websocket
+		std::ostringstream ws_url;
+		ws_url << "ws://" << this->server_settings_address << ':' << this->server_settings_port;
+		WebSocket::pointer ws = WebSocket::from_url(ws_url.str());
+		if (!ws) {
+			UDBG("RAINBOW unable to connect to WebSocket server\n");
+		}else {
+			this->socket = ws;
+		}
 	}else {
-		this->socket = ws;
-	}
+		// Init UDP socket and store parsed address
+		hostent *he = gethostbyname(this->server_settings_address.c_str());
+		if (he == NULL) {
+			UDBG("RAINBOW unable to resolve UDP server's hostname\n");
+			return;
+		}
+		bzero(reinterpret_cast<void*>(&this->server_addr), sizeof(this->server_addr));
+		this->server_addr.sin_family = AF_INET;
+		this->server_addr.sin_port = htons(this->server_settings_port);
+		this->server_addr.sin_addr = *((in_addr*)he->h_addr);
 
-	// Init UDP socket and store parsed address
-	hostent *he = gethostbyname(hostname);
-	if (he == NULL) {
-		UDBG("RAINBOW unable to resolve UDP server's hostname\n");
-		return;
-	}
-	bzero(reinterpret_cast<void*>(&this->server_addr), sizeof(this->server_addr));
-	this->server_addr.sin_family = AF_INET;
-	this->server_addr.sin_port = htons(port);
-	this->server_addr.sin_addr = *((in_addr*)he->h_addr);
+		this->udp_socket = ::socket(AF_INET, SOCK_DGRAM, 0);
+		if (this->udp_socket == -1) {
+			UDBG("RAINBOW unable to connect to UDP server: %s\n", strerror(errno));
+		}
 
-	this->udp_socket = ::socket(AF_INET, SOCK_DGRAM, 0);
-	if (this->udp_socket == -1) {
-		UDBG("RAINBOW unable to connect to UDP server: %s\n", strerror(errno));
+		sockaddr_in bind_addr;
+		bzero(reinterpret_cast<void*>(&bind_addr), sizeof(bind_addr));
+		bind_addr.sin_family = AF_INET;
+		bind_addr.sin_port = htons(0);
+		bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		bind(this->udp_socket, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(sockaddr));
 	}
-
-	sockaddr_in bind_addr;
-	bzero(reinterpret_cast<void*>(&bind_addr), sizeof(bind_addr));
-	bind_addr.sin_family = AF_INET;
-	bind_addr.sin_port = htons(0);
-	bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	bind(this->udp_socket, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(sockaddr));
 }
 
 std::string BrokeStudioFirmware::pathStrFromIndex(uint8 path, uint8 file) {

@@ -15,6 +15,7 @@
 #include "others/mem_labels.asm"
 #include "others/constants.asm"
 #include "others/macros.asm"
+#include "others/rainbow_lib_macros.asm"
 
 ; PRG-ROM
 

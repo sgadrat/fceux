@@ -26,8 +26,20 @@ sample_udp_screen_init:
 		sta tmpfield2
 		jsr draw_zipped_nametable
 
+		; Create UDP "connection"
+		ESP_SEND_CMD(set_udp_cmd)
+		ESP_SEND_CMD(set_localhost_1234_cmd)
+		ESP_SEND_CMD(connect_cmd)
+
 		rts
 	.)
+
+set_udp_cmd:
+.byt 2, TOESP_MSG_SET_SERVER_PROTOCOL, ESP_PROTOCOL_UDP
+set_localhost_1234_cmd:
+.byt 12, TOESP_MSG_SET_SERVER_SETTINGS, >1234, <1234, "localhost"
+connect_cmd:
+.byt 1, TOESP_MSG_CONNECT_TO_SERVER
 
 palettes_data:
 ; Background
@@ -85,8 +97,8 @@ sample_udp_screen_send_msg:
 	lda #15   ; Message length
 	sta $5000 ;
 
-	lda #TOESP_MSG_SEND_UDP_TO_GAME ; Message type - message for the server
-	sta $5000                       ;
+	lda #TOESP_MSG_SEND_MESSAGE_TO_SERVER ; Message type - message for the server
+	sta $5000                             ;
 
 	lda #$52  ;
 	sta $5000 ;
