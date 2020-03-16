@@ -42,11 +42,11 @@ private:
 		GET_RND_WORD,
 		GET_RND_WORD_RANGE,
 		GET_SERVER_STATUS,
-		SET_SERVER_PROTOCOL, //TODO
-		GET_SERVER_SETTINGS, //TODO
-		SET_SERVER_SETTINGS, //TODO
-		CONNECT_TO_SERVER, //TODO changed name (check behaviour)
-		DISCONNECT_FROM_SERVER, //TODO changed name (check behaviour)
+		SET_SERVER_PROTOCOL,
+		GET_SERVER_SETTINGS,
+		SET_SERVER_SETTINGS,
+		CONNECT_TO_SERVER,
+		DISCONNECT_FROM_SERVER,
 		SEND_MESSAGE_TO_SERVER,
 		FILE_OPEN,
 		FILE_CLOSE,
@@ -57,7 +57,7 @@ private:
 		FILE_WRITE,
 		FILE_APPEND,
 		GET_FILE_LIST,
-		GET_FREE_FILE_ID, //TODO
+		GET_FREE_FILE_ID,
 	};
 
 	// Defined message types from ESP to CPU
@@ -66,7 +66,7 @@ private:
 		FILE_EXISTS,
 		FILE_LIST,
 		FILE_DATA,
-		FILE_ID, //TODO
+		FILE_ID,
 		WIFI_STATUS,
 		SERVER_STATUS,
 		HOST_SETTINGS,
@@ -85,6 +85,7 @@ private:
 	void readFile(uint8 path, uint8 file, uint8 n, uint32 offset);
 	template<class I>
 	void writeFile(uint8 path, uint8 file, uint32 offset, I data_begin, I data_end);
+	uint8 getFreeFileId(uint8 path) const;
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);

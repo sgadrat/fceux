@@ -372,6 +372,16 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 			}
 			break;
+		case n2e_cmds_t::GET_FREE_FILE_ID:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_FREE_FILE_ID\n");
+			if (message_size == 2) {
+				uint8 const file_id = this->getFreeFileId(this->rx_buffer.at(2));
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(2);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_ID));
+				this->tx_buffer.push_back(file_id);
+			}
+			break;
 		default:
 			UDBG("RAINBOW BrokeStudioFirmware received unknown message %02x\n", this->rx_buffer.at(1));
 			break;
@@ -423,6 +433,20 @@ void BrokeStudioFirmware::writeFile(uint8 path, uint8 file, uint32 offset, I dat
 		++data_begin;
 	}
 	this->file_exists[path][file] = true;
+}
+
+uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
+	uint8 const NOT_FOUND = 128;
+	if (path >= NUM_FILE_PATHS) {
+		return NOT_FOUND;
+	}
+	std::array<bool, 64> const& existing_files = this->file_exists.at(path);
+	for (size_t i = 0; i < existing_files.size(); ++i) {
+		if (!existing_files[i]) {
+			return i;
+		}
+	}
+	return NOT_FOUND;
 }
 
 template<class I>
