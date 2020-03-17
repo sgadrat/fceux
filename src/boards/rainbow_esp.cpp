@@ -136,7 +136,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 	// Process the message in RX buffer
 	switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
 		case n2e_cmds_t::GET_ESP_STATUS:
-			UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS");
+			UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
 			this->tx_buffer.push_back(last_byte_read);
 			this->tx_buffer.push_back(1);
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::READY));
@@ -217,7 +217,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			}
 			break;
 		case n2e_cmds_t::SET_SERVER_PROTOCOL: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_PROTOCOL\n");
+			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_PROTOCOL\n");
 			if (message_size == 2) {
 				server_protocol_t const requested_protocol = static_cast<server_protocol_t>(this->rx_buffer.at(2));
 				if (requested_protocol > server_protocol_t::UDP) {
