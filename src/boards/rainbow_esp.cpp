@@ -136,7 +136,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 	// Process the message in RX buffer
 	switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
 		case n2e_cmds_t::GET_ESP_STATUS:
-			UDBG("RAIBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
 			this->tx_buffer.push_back(last_byte_read);
 			this->tx_buffer.push_back(1);
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::READY));
@@ -275,18 +275,20 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		}
 		case n2e_cmds_t::FILE_OPEN:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_OPEN\n");
 			if (message_size == 3) {
-				uint8 const selected_path = this->rx_buffer.at(2);
-				uint8 const selected_file = this->rx_buffer.at(3);
-				if (selected_path < this->files.size() && selected_file < this->files[selected_path].size()) {
-					this->working_path = selected_path;
-					this->working_file = selected_file;
+				uint8 const path = this->rx_buffer.at(2);
+				uint8 const file= this->rx_buffer.at(3);
+				if (path < NUM_FILE_PATHS && file < NUM_FILES && !this->file_exists[path][file]) {
+					this->file_exists[path][file] = true;
+					this->working_path = path;
+					this->working_file = file;
 					this->file_offset = 0;
-					this->file_exists[selected_path][selected_file] = true;
 				}
 			}
 			break;
 		case n2e_cmds_t::FILE_CLOSE:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_CLOSE\n");
 			this->working_file = NO_WORKING_FILE;
 			break;
 		case n2e_cmds_t::FILE_EXISTS:
@@ -294,7 +296,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < this->files.size() && file < this->files[path].size()) {
+				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
 					this->tx_buffer.push_back(last_byte_read);
 					this->tx_buffer.push_back(2);
 					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_EXISTS));
@@ -307,9 +309,20 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < this->files.size() && file < this->files[path].size()) {
+				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
+					// File exists, let's delete it
 					this->files[path][file].clear();
 					this->file_exists[path][file] = false;
+					this->tx_buffer.push_back(last_byte_read);
+					this->tx_buffer.push_back(2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
+					this->tx_buffer.push_back(0);
+				}else {
+					// File does not exist, send error
+					this->tx_buffer.push_back(last_byte_read);
+					this->tx_buffer.push_back(2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
+					this->tx_buffer.push_back(1);
 				}
 			}
 			break;
@@ -329,6 +342,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					uint8 const n = this->rx_buffer[2];
 					this->readFile(this->working_path, this->working_file, n, this->file_offset);
 					this->file_offset += n;
+					UDBG("working file offset: %u (%x)\n", this->file_offset, this->file_offset);
+					UDBG("file size: %lu bytes\n", this->files[this->working_file].size());
 					if (this->file_offset > this->files[this->working_file].size()) {
 						this->file_offset = this->files[this->working_file].size();
 					}
@@ -353,7 +368,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case n2e_cmds_t::GET_FILE_LIST:
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_FILE_LIST\n");
 			if (message_size == 2) {
-				UDBG("RAINBOW received FILES.GET_LIST\n");
 				std::vector<uint8> existing_files;
 				uint8 const path = this->rx_buffer[2];
 				assert(this->file_exists[path].size() < 254);
@@ -410,9 +424,8 @@ void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offse
 
 	// Write response
 	this->tx_buffer.push_back(last_byte_read);
-	this->tx_buffer.push_back(data_size + 2);
+	this->tx_buffer.push_back(data_size + 1);
 	this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DATA));
-	this->tx_buffer.push_back(data_size);
 	while (data_begin != data_end) {
 		this->tx_buffer.push_back(*data_begin);
 		++data_begin;
@@ -440,7 +453,7 @@ uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
 	if (path >= NUM_FILE_PATHS) {
 		return NOT_FOUND;
 	}
-	std::array<bool, 64> const& existing_files = this->file_exists.at(path);
+	std::array<bool, NUM_FILES> const& existing_files = this->file_exists.at(path);
 	for (size_t i = 0; i < existing_files.size(); ++i) {
 		if (!existing_files[i]) {
 			return i;
@@ -727,7 +740,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 
 			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
 			std::pair<uint8, uint8> new_path = BrokeStudioFirmware::pathIndexFromStr(new_filename);
-			if (path.first >= NUM_FILE_PATHS || new_path.first >= NUM_FILE_PATHS || path.second >= 64 || new_path.second >= 64) {
+			if (path.first >= NUM_FILE_PATHS || new_path.first >= NUM_FILE_PATHS || path.second >= NUM_FILES || new_path.second >= NUM_FILES) {
 				send_message(200, "{\"success\":\"false\"}\n", "application/json");
 				return;
 			}
@@ -747,7 +760,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			}
 			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
 
-			if (path.first >= NUM_FILE_PATHS || path.second >= 64 || !self->file_exists[path.first][path.second]) {
+			if (path.first >= NUM_FILE_PATHS || path.second >= NUM_FILES || !self->file_exists[path.first][path.second]) {
 				send_generic_error();
 				return;
 			}
@@ -831,6 +844,8 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			}
 			self->files[path.first][path.second] = std::vector<uint8>(file_data->second.begin(), file_data->second.end());
 			self->file_exists[path.first][path.second] = true;
+
+			UDBG("Upload sucessful\n");
 
 			// Return something webbrowser friendly
 			send_message(200, "<html><body><p>Upload success</p></body></html>\n", "text/html");
