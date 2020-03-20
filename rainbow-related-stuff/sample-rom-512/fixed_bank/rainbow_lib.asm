@@ -24,17 +24,18 @@ TOESP_MSG_FILE_APPEND = 22            ; Append data to working file
 TOESP_MSG_GET_FILE_LIST = 23          ; Get list of existing files in a path
 TOESP_MSG_GET_FREE_FILE_ID = 24       ; Get an unexisting file ID in a specific path
 
-FROMESP_MSG_READY = 0                ; ESP is ready
-FROMESP_MSG_FILE_EXISTS = 1          ; Returns if file exists or not
-FROMESP_MSG_FILE_LIST = 2            ; Returns path file list
-FROMESP_MSG_FILE_DATA = 3            ; Returns file data (FILE_READ)
-FROMESP_MSG_FILE_ID = 4              ; Returns a free file ID (GET_FREE_FILE_ID)
-FROMESP_MSG_WIFI_STATUS = 5          ; Returns WiFi connection status
-FROMESP_MSG_SERVER_STATUS = 6        ; Returns server connection status
-FROMESP_MSG_HOST_SETTINGS = 7        ; Returns server settings (host name + port)
-FROMESP_MSG_RND_BYTE = 8             ; Returns random byte value
-FROMESP_MSG_RND_WORD = 9             ; Returns random word value
-FROMESP_MSG_MESSAGE_FROM_SERVER = 10 ; Message from server
+FROMESP_MSG_READY = 0                 ; ESP is ready
+FROMESP_MSG_FILE_EXISTS = 1           ; Returns if file exists or not
+FROMESP_MSG_FILE_DELETE = 2           ; Returns when trying to delete a file
+FROMESP_MSG_FILE_LIST = 3             ; Returns path file list
+FROMESP_MSG_FILE_DATA = 4             ; Returns file data (FILE_READ)
+FROMESP_MSG_FILE_ID = 5               ; Returns a free file ID (GET_FREE_FILE_ID)
+FROMESP_MSG_WIFI_STATUS = 6           ; Returns WiFi connection status
+FROMESP_MSG_SERVER_STATUS = 7         ; Returns server connection status
+FROMESP_MSG_HOST_SETTINGS = 8         ; Returns server settings (host name + port)
+FROMESP_MSG_RND_BYTE = 9              ; Returns random byte value
+FROMESP_MSG_RND_WORD = 10             ; Returns random word value
+FROMESP_MSG_MESSAGE_FROM_SERVER = 11  ; Message from server
 
 ESP_FILE_PATH_SAVE = 0
 ESP_FILE_PATH_ROMS = 1
@@ -44,7 +45,7 @@ ESP_PROTOCOL_WEBSOCKET = 0
 ESP_PROTOCOL_UDP = 1
 
 rainbow_data = $5000
-rainbox_flags = $5001
+rainbow_flags = $5001
 
 ; Send a command to the ESP
 ;  tmpfield1,tmpfield2 - address of the command data
