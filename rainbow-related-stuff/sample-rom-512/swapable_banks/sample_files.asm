@@ -85,7 +85,7 @@ sample_files_screen_tick:
 		; Ask ESP about existing files
 		lda #2
 		sta $5000
-		lda #TOESP_MSG_GET_FILE_LIST
+		lda #TOESP_MSG_FILE_GET_LIST
 		sta $5000
 		lda #ESP_FILE_PATH_USER
 		sta $5000
@@ -99,15 +99,16 @@ sample_files_screen_tick:
 
 		; Set listed files as existant
 		lda $5000 ; Garbage byte
+		nop
 		lda $5000 ; Message length
-		lda $5000 ; Message type
+		nop
+		ldy $5000 ; Message type
+		cmp #1 	  ; Check message length
+		beq end_set_one_file
 		ldx $5000 ; Number of files
 
 		lda #1
 		set_one_file:
-			cpx #0
-			beq end_set_one_file
-
 			ldy $5000
 			sta sample_files_file_exists, y
 
