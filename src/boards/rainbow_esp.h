@@ -59,8 +59,8 @@ private:
 		FILE_READ,
 		FILE_WRITE,
 		FILE_APPEND,
-		GET_FILE_LIST,
-		GET_FREE_FILE_ID,
+		FILE_GET_LIST,
+		FILE_GET_FREE_ID,
 	};
 
 	// Defined message types from ESP to CPU

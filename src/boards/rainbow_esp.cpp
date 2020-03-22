@@ -235,7 +235,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->tx_buffer.push_back(1 + 2 + this->server_settings_address.size());
 			this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS));
 			this->tx_buffer.push_back(this->server_settings_port >> 8);
-			this->tx_buffer.push_back(this->server_settings_port & 0x0f);
+			this->tx_buffer.push_back(this->server_settings_port & 0xff);
 			this->tx_buffer.insert(this->tx_buffer.end(), this->server_settings_address.begin(), this->server_settings_address.end());
 			break;
 		case n2e_cmds_t::SET_SERVER_SETTINGS:
@@ -309,16 +309,24 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
-					// File exists, let's delete it
-					this->files[path][file].clear();
-					this->file_exists[path][file] = false;
-					this->tx_buffer.push_back(last_byte_read);
-					this->tx_buffer.push_back(2);
-					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
-					this->tx_buffer.push_back(0);
+				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
+					if (this->file_exists[path][file]) {
+						// File exists, let's delete it
+						this->files[path][file].clear();
+						this->file_exists[path][file] = false;
+						this->tx_buffer.push_back(last_byte_read);
+						this->tx_buffer.push_back(2);
+						this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
+						this->tx_buffer.push_back(0);
+					}else {
+						// File does not exist
+						this->tx_buffer.push_back(last_byte_read);
+						this->tx_buffer.push_back(2);
+						this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
+						this->tx_buffer.push_back(2);
+					}
 				}else {
-					// File does not exist, send error
+					// Error while deleting the file
 					this->tx_buffer.push_back(last_byte_read);
 					this->tx_buffer.push_back(2);
 					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
@@ -365,35 +373,49 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
 			}
 			break;
-		case n2e_cmds_t::GET_FILE_LIST:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_FILE_LIST\n");
+		case n2e_cmds_t::FILE_GET_LIST:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
 			if (message_size == 2) {
 				std::vector<uint8> existing_files;
 				uint8 const path = this->rx_buffer[2];
-				assert(this->file_exists[path].size() < 254);
+				assert(this->file_exists[path].size() < NUM_FILES);
 				for (uint8 i = 0; i < this->file_exists[path].size(); ++i) {
 					if (this->file_exists[path][i]) {
 						existing_files.push_back(i);
 					}
 				}
 				this->tx_buffer.push_back(last_byte_read);
-				this->tx_buffer.push_back(existing_files.size() + 2);
-				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
-				this->tx_buffer.push_back(existing_files.size());
-				for (uint8 i: existing_files) {
-					UDBG("RAINBOW => %02x\n", i);
-					this->tx_buffer.push_back(i);
+				if (existing_files.size() != 0) {
+					// File(s) found
+					this->tx_buffer.push_back(existing_files.size() + 2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
+					this->tx_buffer.push_back(existing_files.size());
+					for (uint8 i : existing_files) {
+						UDBG("RAINBOW => %02x\n", i);
+						this->tx_buffer.push_back(i);
+					}
+				}else {
+					// File(s) not found
+					this->tx_buffer.push_back(1);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
 				}
 			}
 			break;
-		case n2e_cmds_t::GET_FREE_FILE_ID:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_FREE_FILE_ID\n");
+		case n2e_cmds_t::FILE_GET_FREE_ID:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_FREE_ID\n");
 			if (message_size == 2) {
-				uint8 const file_id = this->getFreeFileId(this->rx_buffer.at(2));
 				this->tx_buffer.push_back(last_byte_read);
-				this->tx_buffer.push_back(2);
-				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_ID));
-				this->tx_buffer.push_back(file_id);
+				uint8 const file_id = this->getFreeFileId(this->rx_buffer.at(2));
+				if (file_id != 128) {
+					// Free file ID found
+					this->tx_buffer.push_back(2);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_ID));
+					this->tx_buffer.push_back(file_id);
+				}else {
+					// Free file ID not found
+					this->tx_buffer.push_back(1);
+					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_ID));
+				}
 			}
 			break;
 		default:
