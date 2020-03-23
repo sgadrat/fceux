@@ -101,12 +101,14 @@ sample_files_screen_tick:
 		lda $5000 ; Message length
 		nop
 		ldy $5000 ; Message type
-		cmp #1 	  ; Check message length
-		beq end_set_one_file
+		nop
 		ldx $5000 ; Number of files
 
 		lda #1
 		set_one_file:
+			cpx #0
+			beq end_set_one_file
+
 			ldy $5000
 			sta sample_files_file_exists, y
 
@@ -161,8 +163,11 @@ sample_files_screen_tick:
 			;  Continuation | PPU Address           | Size | Data | Next continuation
 			;  $01          | $212c + 32 * cur_file | $03  | data | $00
 			lda $5000 ; Garbage byte
+			nop
 			lda $5000 ; Message length
+			nop
 			lda $5000 ; Message type
+			nop
 			lda $5000 ; Data length
 
 			lda #$21
