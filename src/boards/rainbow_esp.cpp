@@ -375,29 +375,32 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case n2e_cmds_t::FILE_GET_LIST:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
-			if (message_size == 2) {
+			if (message_size >= 2) {
 				std::vector<uint8> existing_files;
 				uint8 const path = this->rx_buffer[2];
+				uint8 pageSize = NUM_FILES;
+				uint8 currentPage = 0;
+				if (message_size == 4) {
+					pageSize = this->rx_buffer[3];
+					currentPage = this->rx_buffer[4];
+				}
+				uint8 begin = currentPage * pageSize;
+				uint8 end = currentPage * pageSize + pageSize;
+				if (end > this->file_exists[path].size())
+					end = this->file_exists[path].size();
 				assert(this->file_exists[path].size() < NUM_FILES);
-				for (uint8 i = 0; i < this->file_exists[path].size(); ++i) {
+				for (uint8 i = begin; i < end; ++i) {
 					if (this->file_exists[path][i]) {
 						existing_files.push_back(i);
 					}
 				}
 				this->tx_buffer.push_back(last_byte_read);
-				if (existing_files.size() != 0) {
-					// File(s) found
-					this->tx_buffer.push_back(existing_files.size() + 2);
-					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
-					this->tx_buffer.push_back(existing_files.size());
-					for (uint8 i : existing_files) {
-						UDBG("RAINBOW => %02x\n", i);
-						this->tx_buffer.push_back(i);
-					}
-				}else {
-					// File(s) not found
-					this->tx_buffer.push_back(1);
-					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
+				this->tx_buffer.push_back(existing_files.size() + 2);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
+				this->tx_buffer.push_back(existing_files.size());
+				for (uint8 i : existing_files) {
+					UDBG("RAINBOW => %02x\n", i);
+					this->tx_buffer.push_back(i);
 				}
 			}
 			break;
@@ -446,8 +449,9 @@ void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offse
 
 	// Write response
 	this->tx_buffer.push_back(last_byte_read);
-	this->tx_buffer.push_back(data_size + 1);
+	this->tx_buffer.push_back(data_size + 2);
 	this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DATA));
+	this->tx_buffer.push_back(data_size);
 	while (data_begin != data_end) {
 		this->tx_buffer.push_back(*data_begin);
 		++data_begin;
