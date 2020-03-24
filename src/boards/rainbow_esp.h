@@ -59,6 +59,7 @@ private:
 		FILE_READ,
 		FILE_WRITE,
 		FILE_APPEND,
+		FILE_COUNT,
 		FILE_GET_LIST,
 		FILE_GET_FREE_ID,
 	};
@@ -71,6 +72,7 @@ private:
 		FILE_DELETE,
 		FILE_LIST,
 		FILE_DATA,
+		FILE_COUNT,
 		FILE_ID,
 
 		WIFI_STATUS,

@@ -373,6 +373,28 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
 			}
 			break;
+		case n2e_cmds_t::FILE_COUNT:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_COUNT\n");
+			if (message_size == 2) {
+				uint8 const path = this->rx_buffer[2];
+				std::vector<uint8> existing_files;
+				this->tx_buffer.push_back(last_byte_read);
+				this->tx_buffer.push_back(2);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_COUNT));
+				if (path >= NUM_FILE_PATHS) {
+					this->tx_buffer.push_back(0);
+					break;
+				}
+				assert(this->file_exists[path].size() <= NUM_FILES);
+				for (uint8 i = 0; i < NUM_FILES; ++i) {
+					if (this->file_exists[path][i]) {
+						existing_files.push_back(i);
+					}
+				}
+				UDBG("%u files found in path %u\n", existing_files.size(), path);
+				this->tx_buffer.push_back(existing_files.size());
+			}
+			break;
 		case n2e_cmds_t::FILE_GET_LIST:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
 			if (message_size >= 2) {
@@ -384,15 +406,20 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					pageSize = this->rx_buffer[3];
 					currentPage = this->rx_buffer[4];
 				}
-				uint8 begin = currentPage * pageSize;
-				uint8 end = currentPage * pageSize + pageSize;
-				if (end > this->file_exists[path].size())
-					end = this->file_exists[path].size();
-				assert(this->file_exists[path].size() < NUM_FILES);
-				for (uint8 i = begin; i < end; ++i) {
+				uint8 pageStart = currentPage * pageSize;
+				uint8 pageEnd = currentPage * pageSize + pageSize;
+				uint8 nFiles = 0;
+				if (pageEnd > this->file_exists[path].size())
+					pageEnd = this->file_exists[path].size();
+				assert(this->file_exists[path].size() <= NUM_FILES);
+				for (uint8 i = 0; i < NUM_FILES; ++i) {
 					if (this->file_exists[path][i]) {
-						existing_files.push_back(i);
+						if (nFiles >= pageStart && nFiles < pageEnd) {
+							existing_files.push_back(i);
+						}
+						nFiles++;
 					}
+					if (nFiles >= pageEnd) break;
 				}
 				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(existing_files.size() + 2);
@@ -432,7 +459,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 
 void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offset) {
 	assert(path < NUM_FILE_PATHS);
-	assert(file < this->files[path].size());
+	assert(file < NUM_FILES);
 
 	// Get data range
 	std::vector<uint8> const& f = this->files[path][file];
@@ -480,7 +507,7 @@ uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
 		return NOT_FOUND;
 	}
 	std::array<bool, NUM_FILES> const& existing_files = this->file_exists.at(path);
-	for (size_t i = 0; i < existing_files.size(); ++i) {
+	for (uint8 i = 0; i < static_cast<uint8>(existing_files.size()); ++i) {
 		if (!existing_files[i]) {
 			return i;
 		}
