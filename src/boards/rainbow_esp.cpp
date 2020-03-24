@@ -377,7 +377,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_COUNT\n");
 			if (message_size == 2) {
 				uint8 const path = this->rx_buffer[2];
-				std::vector<uint8> existing_files;
 				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(2);
 				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_COUNT));
@@ -385,14 +384,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					this->tx_buffer.push_back(0);
 					break;
 				}
-				assert(this->file_exists[path].size() <= NUM_FILES);
-				for (uint8 i = 0; i < NUM_FILES; ++i) {
-					if (this->file_exists[path][i]) {
-						existing_files.push_back(i);
+				uint8 nb_files = 0;
+				for (bool exists : this->file_exists[path]) {
+					if (exists) {
+						++nb_files;
 					}
 				}
-				UDBG("%u files found in path %u\n", existing_files.size(), path);
-				this->tx_buffer.push_back(existing_files.size());
+				this->tx_buffer.push_back(nb_files);
+				UDBG("%u files found in path %u\n", nb_files, path);
 			}
 			break;
 		case n2e_cmds_t::FILE_GET_LIST:
@@ -400,32 +399,31 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size >= 2) {
 				std::vector<uint8> existing_files;
 				uint8 const path = this->rx_buffer[2];
-				uint8 pageSize = NUM_FILES;
-				uint8 currentPage = 0;
+				uint8 page_size = NUM_FILES;
+				uint8 current_page = 0;
 				if (message_size == 4) {
-					pageSize = this->rx_buffer[3];
-					currentPage = this->rx_buffer[4];
+					page_size = this->rx_buffer[3];
+					current_page = this->rx_buffer[4];
 				}
-				uint8 pageStart = currentPage * pageSize;
-				uint8 pageEnd = currentPage * pageSize + pageSize;
+				uint8 page_start = current_page * page_size;
+				uint8 page_end = current_page * page_size + page_size;
 				uint8 nFiles = 0;
-				if (pageEnd > this->file_exists[path].size())
-					pageEnd = this->file_exists[path].size();
-				assert(this->file_exists[path].size() <= NUM_FILES);
+				if (page_end > this->file_exists[path].size())
+					page_end = this->file_exists[path].size();
 				for (uint8 i = 0; i < NUM_FILES; ++i) {
 					if (this->file_exists[path][i]) {
-						if (nFiles >= pageStart && nFiles < pageEnd) {
+						if (nFiles >= page_start && nFiles < page_end) {
 							existing_files.push_back(i);
 						}
 						nFiles++;
 					}
-					if (nFiles >= pageEnd) break;
+					if (nFiles >= page_end) break;
 				}
 				this->tx_buffer.push_back(last_byte_read);
 				this->tx_buffer.push_back(existing_files.size() + 2);
 				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_LIST));
 				this->tx_buffer.push_back(existing_files.size());
-				for (uint8 i : existing_files) {
+				for (uint8 i: existing_files) {
 					UDBG("RAINBOW => %02x\n", i);
 					this->tx_buffer.push_back(i);
 				}
@@ -507,7 +505,7 @@ uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
 		return NOT_FOUND;
 	}
 	std::array<bool, NUM_FILES> const& existing_files = this->file_exists.at(path);
-	for (uint8 i = 0; i < static_cast<uint8>(existing_files.size()); ++i) {
+	for (size_t i = 0; i < existing_files.size(); ++i) {
 		if (!existing_files[i]) {
 			return i;
 		}
