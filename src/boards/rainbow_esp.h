@@ -62,6 +62,7 @@ private:
 		FILE_COUNT,
 		FILE_GET_LIST,
 		FILE_GET_FREE_ID,
+		FILE_GET_INFO,
 	};
 
 	// Defined message types from ESP to CPU
@@ -74,6 +75,7 @@ private:
 		FILE_DATA,
 		FILE_COUNT,
 		FILE_ID,
+		FILE_INFO,
 
 		WIFI_STATUS,
 		SERVER_STATUS,
