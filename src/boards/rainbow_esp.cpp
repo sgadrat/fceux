@@ -6,6 +6,7 @@
 #include <regex>
 #include <map>
 #include <sstream>
+#include "../utils/crc32.h"
 
 #if defined(_WIN32) || defined(WIN32)
 
@@ -73,6 +74,15 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 			}
 			mg_mgr_free(&this->mgr);
 		});
+	}
+
+	// Clear file list
+	for (uint8 p = 0; p < NUM_FILE_PATHS; p++)
+	{
+		for (uint8 f = 0; f < NUM_FILES; f++)
+		{
+			this->file_exists[p][f] = false;
+		}
 	}
 }
 
@@ -278,8 +288,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_OPEN\n");
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
-				uint8 const file= this->rx_buffer.at(3);
-				if (path < NUM_FILE_PATHS && file < NUM_FILES && !this->file_exists[path][file]) {
+				uint8 const file = this->rx_buffer.at(3);
+				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
 					this->file_exists[path][file] = true;
 					this->working_path = path;
 					this->working_file = file;
@@ -351,9 +361,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					this->readFile(this->working_path, this->working_file, n, this->file_offset);
 					this->file_offset += n;
 					UDBG("working file offset: %u (%x)\n", this->file_offset, this->file_offset);
-					UDBG("file size: %lu bytes\n", this->files[this->working_file].size());
-					if (this->file_offset > this->files[this->working_file].size()) {
-						this->file_offset = this->files[this->working_file].size();
+					UDBG("file size: %lu bytes\n", this->files[this->working_path][this->working_file].size());
+					if (this->file_offset > this->files[this->working_path][this->working_file].size()) {
+						this->file_offset = this->files[this->working_path][this->working_file].size();
 					}
 				}else {
 					this->tx_buffer.insert(this->tx_buffer.end(), {last_byte_read, 2, static_cast<uint8>(e2n_cmds_t::FILE_DATA), 0});
@@ -444,6 +454,38 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					this->tx_buffer.push_back(1);
 					this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_ID));
 				}
+			}
+			break;
+		case n2e_cmds_t::FILE_GET_INFO:
+			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_INFO\n");
+			if (message_size == 3) {
+				uint8 const path = this->rx_buffer.at(2);
+				uint8 const file = this->rx_buffer.at(3);
+				this->tx_buffer.push_back(last_byte_read);
+				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
+					if (this->file_exists[path][file]) {
+						// File exists, send info
+						this->tx_buffer.push_back(9);
+						this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_INFO));
+						// File CRC32
+						uint32 file_crc32;
+						file_crc32 = CalcCRC32(0L, this->files[path][file].data(), this->files[path][file].size());
+						this->tx_buffer.push_back((file_crc32 >> 24) & 0xff);
+						this->tx_buffer.push_back((file_crc32 >> 16) & 0xff);
+						this->tx_buffer.push_back((file_crc32 >> 8) & 0xff);
+						this->tx_buffer.push_back(file_crc32 & 0xff);
+						// File size
+						uint32 file_size = this->files[path][file].size();
+						this->tx_buffer.push_back((file_size >> 24) & 0xff);
+						this->tx_buffer.push_back((file_size >> 16) & 0xff);
+						this->tx_buffer.push_back((file_size >> 8 ) & 0xff);
+						this->tx_buffer.push_back(file_size & 0xff);
+						break;
+					}
+				}
+				// File not found or path/file out of bounds
+				this->tx_buffer.push_back(1);
+				this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_INFO));
 			}
 			break;
 		default:
