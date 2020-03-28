@@ -3,6 +3,7 @@
 #include "../fceu.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <regex>
 #include <map>
 #include <sstream>
@@ -44,6 +45,35 @@ using easywsclient::WebSocket;
 #else
 #define UDBG_FLOOD(...)
 #endif
+
+namespace {
+
+std::vector<uint8> readHostFile(std::string const& file_path) {
+	// Open file
+	std::ifstream ifs(file_path);
+	if (!ifs) {
+		throw std::runtime_error("unable to open file");
+	}
+
+	// Get file length
+	ifs.seekg(0, ifs.end);
+	size_t const file_length = ifs.tellg();
+	if (ifs.fail()) {
+		throw std::runtime_error("unable to get file length");
+	}
+	ifs.seekg(0, ifs.beg);
+
+	// Read file
+	std::vector<uint8> data(1024*1024);
+	ifs.read(reinterpret_cast<char*>(data.data()), file_length);
+	if (ifs.fail()) {
+		throw std::runtime_error("error while reading file");
+	}
+
+	return data;
+}
+
+}
 
 BrokeStudioFirmware::BrokeStudioFirmware() {
 	UDBG("RAINBOW BrokeStudioFirmware ctor\n");
@@ -783,7 +813,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 		UDBG("http request event \n");
 		struct http_message *hm = (struct http_message *) ev_data;
 		UDBG("  uri: %.*s\n", hm->uri.len, hm->uri.p);
-		if (strncmp("/api/file/list", hm->uri.p, hm->uri.len) == 0) {
+		if (std::string("/api/file/list") == std::string(hm->uri.p, hm->uri.len)) {
 			char path[256];
 			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
 			if (path_len <= 0) {
@@ -802,7 +832,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			}
 			mg_printf(nc, "]\n");
 			nc->flags |= MG_F_SEND_AND_CLOSE;
-		}else if (strncmp("/api/file/delete", hm->uri.p, hm->uri.len) == 0) {
+		}else if (std::string("/api/file/delete") == std::string(hm->uri.p, hm->uri.len)) {
 			char filename[256];
 			int const path_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
 			if (path_len <= 0) {
@@ -817,7 +847,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 				self->files[path.first][path.second].clear();
 				send_message(200, "{\"success\":\"true\"}\n", "application/json");
 			}
-		}else if (strncmp("/api/file/rename", hm->uri.p, hm->uri.len) == 0) {
+		}else if (std::string("/api/file/rename") == std::string(hm->uri.p, hm->uri.len)) {
 			char filename[256];
 			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
 			if (filename_len <= 0) {
@@ -844,7 +874,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			self->files[path.first][path.second].clear();
 
 			send_message(200, "{\"success\":\"true\"}\n", "application/json");
-		}else if (strncmp("/api/file/download", hm->uri.p, hm->uri.len) == 0) {
+		}else if (std::string("/api/file/download") == std::string(hm->uri.p, hm->uri.len)) {
 			char filename[256];
 			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
 			if (filename_len <= 0) {
@@ -864,7 +894,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			);
 			mg_send(nc, self->files[path.first][path.second].data(), self->files[path.first][path.second].size());
 			nc->flags |= MG_F_SEND_AND_CLOSE;
-		}else if (strncmp("/api/file/upload", hm->uri.p, hm->uri.len) == 0) {
+		}else if (std::string("/api/file/upload") == std::string(hm->uri.p, hm->uri.len)) {
 			// Get boundary for multipart form in HTTP headers
 			std::string multipart_boundary;
 			{
@@ -942,36 +972,49 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 
 			// Return something webbrowser friendly
 			send_message(200, "<html><body><p>Upload success</p></body></html>\n", "text/html");
-		}else if (strncmp("/index.html", hm->uri.p, hm->uri.len) == 0) {
-			send_message(
-				200,
-				R"-(<html><body><form action="/api/file/upload" method="post" enctype="multipart/form-data"><input name="file" type="file"><br /><input name="path" type="text" value="/USER/file10.bin"><br /><button type="submit">Upload</button></form></body></html>)-",
-				"text/html"
-			);
 		}else {
-			mg_send_response_line(
-				nc, 200,
-				"Content-Type: text/html\r\n"
-				"Connection: close\r\n"
-			);
-			mg_printf(
-				nc,
-				"<html><body>\n"
-				"<h1>Hello!</h1>\n"
-				"<p>Server connection is %s</p>\n"
-				"<p>method: %.*s</p>\n"
-				"<p>uri: %.*s</p>\n"
-				"<p>query: %.*s</p>\n"
-				"<p>body:</p>\n"
-				"<pre>%.*s</pre>\n"
-				"</body></html>\n",
-				self->socket != nullptr ? "good" : "bad",
-				(int)hm->method.len, hm->method.p,
-				(int)hm->uri.len, hm->uri.p,
-				(int)hm->query_string.len, hm->query_string.p,
-				(int)hm->body.len, hm->body.p
-			);
-			nc->flags |= MG_F_SEND_AND_CLOSE;
+			char const* www_root = ::getenv("RAINBOW_WWW_ROOT");
+			if (www_root == NULL) {
+				send_message(
+					200,
+					R"-(<html><body><form action="/api/file/upload" method="post" enctype="multipart/form-data"><input name="file" type="file"><br /><input name="path" type="text" value="/USER/file10.bin"><br /><button type="submit">Upload</button></form></body></html>)-",
+					"text/html"
+				);
+			}else {
+				// Translate url path to a file path on disk
+				assert(hm->uri.len > 0); // Impossible as HTTP header are constructed in such a way that there is always at least one char in path (I think)
+				std::string uri(hm->uri.p+1, hm->uri.len-1); // remove leading "/"
+				if (uri.empty()) {
+					uri = "index.html";
+				}
+				std::string file_path(std::string(www_root) + uri);
+
+				// Serve file
+				try {
+					std::vector<uint8> contents = readHostFile(file_path);
+
+					mg_send_response_line(
+						nc, 200,
+						"Content-Type: text/html\r\n" //TODO guess mime type, mongoose has a function for that (mg_get_mime_type) but it is private
+						"Connection: close\r\n"
+					);
+					mg_send(nc, contents.data(), contents.size());
+					nc->flags |= MG_F_SEND_AND_CLOSE;
+				}catch(std::runtime_error const& e) {
+					std::string message(
+						"<html><body><h1>404</h1><p>" +
+						file_path +
+						"</p><p>" +
+						e.what() +
+						"</p></body></html>"
+					);
+					send_message(
+						404,
+						message.c_str(),
+						"text/html"
+					);
+				}
+			}
 		}
 	}
 }
