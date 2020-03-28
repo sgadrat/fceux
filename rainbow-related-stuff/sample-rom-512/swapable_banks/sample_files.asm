@@ -112,7 +112,7 @@ sample_files_screen_tick:
 		rts
 
 		cmd_get_list:
-		.byt 2, TOESP_MSG_FILE_GET_LIST, TOESP_MSG_FILE_GET_LIST
+		.byt 2, TOESP_MSG_FILE_GET_LIST, ESP_FILE_PATH_USER
 	.)
 
 	show_files:
