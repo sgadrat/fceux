@@ -83,19 +83,10 @@ sample_files_screen_tick:
 			bne reset_one_byte
 
 		; Ask ESP about existing files
-		lda #2
-		sta $5000
-		lda #TOESP_MSG_FILE_GET_LIST
-		sta $5000
-		lda #ESP_FILE_PATH_USER
-		sta $5000
+		ESP_SEND_CMD(cmd_get_list)
 
 		; Wait ESP response
-		.(
-			wait_esp:
-			bit $5001
-			bpl wait_esp 
-		.)
+		jsr esp_wait_message
 
 		; Set listed files as existant
 		lda $5000 ; Garbage byte
@@ -119,6 +110,9 @@ sample_files_screen_tick:
 		end_set_one_file:
 
 		rts
+
+		cmd_get_list:
+		.byt 2, TOESP_MSG_FILE_GET_LIST, TOESP_MSG_FILE_GET_LIST
 	.)
 
 	show_files:
@@ -155,11 +149,7 @@ sample_files_screen_tick:
 			sta $5000
 
 			; Wait ESP response
-			.(
-				wait_esp:
-				bit $5001
-				bpl wait_esp 
-			.)
+			jsr esp_wait_message
 
 			; Construct nametable buffer from file data
 			;  Continuation | PPU Address           | Size | Data | Next continuation
