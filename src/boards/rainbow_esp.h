@@ -97,6 +97,8 @@ private:
 	template<class I>
 	void writeFile(uint8 path, uint8 file, uint32 offset, I data_begin, I data_end);
 	uint8 getFreeFileId(uint8 path) const;
+	void saveFiles() const;
+	void loadFiles();
 
 	template<class I>
 	void sendMessageToServer(I begin, I end);

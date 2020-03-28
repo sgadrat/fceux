@@ -114,6 +114,9 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 			this->file_exists[p][f] = false;
 		}
 	}
+
+	// Load file list from save file (if any)
+	this->loadFiles();
 }
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
@@ -319,11 +322,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
+				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
 					this->file_exists[path][file] = true;
 					this->working_path = path;
 					this->working_file = file;
 					this->file_offset = 0;
+					this->saveFiles();
 				}
 			}
 			break;
@@ -358,6 +362,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						this->tx_buffer.push_back(2);
 						this->tx_buffer.push_back(static_cast<uint8>(e2n_cmds_t::FILE_DELETE));
 						this->tx_buffer.push_back(0);
+						this->saveFiles();
 					}else {
 						// File does not exist
 						this->tx_buffer.push_back(last_byte_read);
@@ -569,6 +574,7 @@ void BrokeStudioFirmware::writeFile(uint8 path, uint8 file, uint32 offset, I dat
 		++data_begin;
 	}
 	this->file_exists[path][file] = true;
+	this->saveFiles();
 }
 
 uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
@@ -583,6 +589,66 @@ uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
 		}
 	}
 	return NOT_FOUND;
+}
+
+void BrokeStudioFirmware::saveFiles() const {
+	char const* filesystem_file_path = ::getenv("RAINBOW_FILESYSTEM_FILE");
+	if (filesystem_file_path == NULL) {
+		return;
+	}
+
+	std::ofstream ofs(filesystem_file_path);
+	for(std::array<bool, NUM_FILES> const& path: this->file_exists) {
+		for(bool exists: path) {
+			ofs << exists << ' ';
+		}
+		ofs << '\n';
+	}
+	ofs << '\n';
+
+	for (std::array<std::vector<uint8>, NUM_FILES> const& path: this->files) {
+		for (std::vector<uint8> const& file: path) {
+			ofs << file.size() << '\n';
+			for (uint8 byte: file) {
+				ofs << (uint16_t)byte << ' ';
+			}
+			ofs << '\n';
+		}
+	}
+}
+
+void BrokeStudioFirmware::loadFiles() {
+	char const* filesystem_file_path = ::getenv("RAINBOW_FILESYSTEM_FILE");
+	if (filesystem_file_path == NULL) {
+		return;
+	}
+
+	std::ifstream ifs(filesystem_file_path);
+	if (ifs.fail()) {
+		return;
+	}
+
+	for(std::array<bool, NUM_FILES>& path: this->file_exists) {
+		for(bool& exists: path) {
+			ifs >> exists;
+		}
+	}
+
+	for (std::array<std::vector<uint8>, NUM_FILES>& path: this->files) {
+		for (std::vector<uint8>& file: path) {
+			size_t file_size;
+			ifs >> file_size;
+
+			file.clear();
+			file.reserve(file_size);
+			for (size_t i = 0; i < file_size; ++i) {
+				uint16_t byte;
+				ifs >> byte;
+				if (byte > 255) throw std::runtime_error("invalid filesystem file");
+				file.push_back(byte);
+			}
+		}
+	}
 }
 
 template<class I>
