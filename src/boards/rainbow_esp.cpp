@@ -50,7 +50,7 @@ namespace {
 
 std::vector<uint8> readHostFile(std::string const& file_path) {
 	// Open file
-	std::ifstream ifs(file_path);
+	std::ifstream ifs(file_path, std::ifstream::binary);
 	if (!ifs) {
 		throw std::runtime_error("unable to open file");
 	}
@@ -64,7 +64,7 @@ std::vector<uint8> readHostFile(std::string const& file_path) {
 	ifs.seekg(0, ifs.beg);
 
 	// Read file
-	std::vector<uint8> data(1024*1024);
+	std::vector<uint8> data(file_length);
 	ifs.read(reinterpret_cast<char*>(data.data()), file_length);
 	if (ifs.fail()) {
 		throw std::runtime_error("error while reading file");
@@ -72,6 +72,8 @@ std::vector<uint8> readHostFile(std::string const& file_path) {
 
 	return data;
 }
+
+std::array<std::string, NUM_FILE_PATHS> dir_names = { "SAVE", "ROMS", "USER" };
 
 }
 
@@ -835,35 +837,6 @@ void BrokeStudioFirmware::openConnection() {
 	}
 }
 
-std::string BrokeStudioFirmware::pathStrFromIndex(uint8 path, uint8 file) {
-	assert(path < NUM_FILE_PATHS);
-	std::string const dir_names[NUM_FILE_PATHS] = {"SAVE", "ROMS", "USER"};
-	std::ostringstream oss;
-	oss << dir_names[path] << "/file" << static_cast<uint16>(file) << ".bin";
-	return oss.str();
-}
-
-std::pair<uint8, uint8> BrokeStudioFirmware::pathIndexFromStr(std::string const& name) {
-	static std::regex const file_path_regex("/?(SAVE|ROMS|USER)/file([0-9]+).bin");
-	std::smatch match;
-	if (std::regex_match(name, match, file_path_regex)) {
-		assert(match.size() == 3);
-		uint8 path = 0;
-		if (match[1] == "ROMS") {
-			path = 1;
-		}else if (match[1] == "USER") {
-			path = 2;
-		}
-		std::istringstream iss(match[2]);
-		unsigned int file;
-		iss >> file;
-		if (file <= 0xff) {
-			return std::pair<uint8, uint8>(path, file);
-		}
-	}
-	return std::pair<uint8, uint8>(0, NO_WORKING_FILE);
-}
-
 void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 	BrokeStudioFirmware* self = reinterpret_cast<BrokeStudioFirmware*>(nc->mgr->user_data);
 	auto send_message = [&] (int status_code, char const * body, char const * mime) {
@@ -873,7 +846,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 		nc->flags |= MG_F_SEND_AND_CLOSE;
 	};
 	auto send_generic_error = [&] {
-		send_message(400, "<html><body><h1>Error</h1></body><html>\n", "text/html");
+		send_message(200, "{\"success\":\"false\"}\n", "application/json");
 	};
 	if (ev == MG_EV_HTTP_REQUEST) {
 		UDBG("http request event \n");
@@ -882,74 +855,133 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 		if (std::string("/api/file/list") == std::string(hm->uri.p, hm->uri.len)) {
 			char path[256];
 			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
+			if (path_len < 0) {
+				send_generic_error();
+				return;
+			}
+			mg_send_response_line(nc, 200, "Content-Type: application/json\r\nConnection: close\r\n");
+			mg_printf(nc, "[");
+			if (path_len == 0) {
+				// Send three paths
+				for (uint8_t path_index = 0; path_index < NUM_FILE_PATHS; ++path_index) {
+					if (path_index != 0)
+					{
+						mg_printf(nc, ",");
+					}
+					uint32_t path_size = 0L;
+					for (uint8_t file_index = 0; file_index < NUM_FILES; ++file_index) {
+						if (self->file_exists[path_index][file_index])
+							path_size += self->files[path_index][file_index].size();
+					}
+					mg_printf(nc, "{\"id\":\"%d\",\"type\":\"dir\",\"name\":\"%s\",\"size\":\"%d\"}", path_index, dir_names[path_index].c_str(), path_size);
+				}
+			}
+			else {
+				// Send path content
+				int path_index = path[0] - '0';
+				mg_printf(nc, "{\"id\":\"\",\"type\":\"dir\",\"name\":\"..\",\"size\":\"-1\"}");
+					for (uint8_t file_index = 0; file_index < self->file_exists[path_index].size(); ++file_index) {
+						if (self->file_exists[path_index][file_index]) {
+							mg_printf(nc, ",");
+							mg_printf(nc, "{\"id\":\"%d\",\"type\":\"file\",\"name\":\"file%d.bin\",\"size\":\"%d\"}", file_index, file_index, static_cast<int>(self->files[path_index][file_index].size()));
+						}
+					}
+			}
+			mg_printf(nc, "]");
+			nc->flags |= MG_F_SEND_AND_CLOSE;
+		}
+		else if (std::string("/api/file/free") == std::string(hm->uri.p, hm->uri.len)) {
+			char path[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
 			if (path_len <= 0) {
 				send_generic_error();
 				return;
 			}
 			mg_send_response_line(nc, 200, "Content-Type: application/json\r\nConnection: close\r\n");
-			mg_printf(nc, "[\n");
-			int id = 0;
-			for (uint8_t file_path = 0; file_path < NUM_FILE_PATHS; ++file_path) {
-				for (int file_index = 0; file_index < self->file_exists[file_path].size(); ++file_index) {
-					if (self->file_exists[file_path][file_index]) {
-						mg_printf(nc, "  {\"id\":\"%d\",\"name\":\"%s\",\"size\":\"%d\"}\n", id, BrokeStudioFirmware::pathStrFromIndex(file_path, file_index).c_str(), static_cast<int>(self->files[file_path][file_index].size()));
+			mg_printf(nc, "[");
+			int path_index = std::atoi(path);
+			bool found = false;
+			for (uint8_t file_index = 0; file_index < NUM_FILES; ++file_index) {
+				if (!self->file_exists[path_index][file_index]) {
+					if (found) {
+						mg_printf(nc, ",");
 					}
+					mg_printf(nc, "{\"id\":\"%d\",\"name\":\"%d\"}", file_index, file_index);
+					found = true;
 				}
 			}
-			mg_printf(nc, "]\n");
+			mg_printf(nc, "]");
 			nc->flags |= MG_F_SEND_AND_CLOSE;
 		}else if (std::string("/api/file/delete") == std::string(hm->uri.p, hm->uri.len)) {
-			char filename[256];
-			int const path_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
-			if (path_len <= 0) {
+			char path[256];
+			char file[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
+			int const file_len = mg_get_http_var(&hm->query_string, "file", file, 256);
+
+			if (path_len <= 0 || file_len <= 0) {
 				send_generic_error();
 				return;
 			}
-			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
-			if (path.second == NO_WORKING_FILE || !self->file_exists[path.first][path.second]) {
-				send_message(200, "{\"success\":\"false\"}\n", "application/json");
-			}else {
-				self->file_exists[path.first][path.second] = false;
-				self->files[path.first][path.second].clear();
-				send_message(200, "{\"success\":\"true\"}\n", "application/json");
+
+			uint8 path_index = std::atoi(path);
+			uint8 file_index = std::atoi(file);
+
+			if (path_index >= NUM_FILE_PATHS || file_index >= NUM_FILES || !self->file_exists[path_index][file_index]) {
+				send_generic_error();
+				return;
 			}
+
+			self->file_exists[path_index][file_index] = false;
+			self->files[path_index][file_index].clear();
+			send_message(200, "{\"success\":\"true\"}\n", "application/json");
+
 		}else if (std::string("/api/file/rename") == std::string(hm->uri.p, hm->uri.len)) {
-			char filename[256];
-			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
-			if (filename_len <= 0) {
-				send_generic_error();
-				return;
-			}
-			char new_filename[256];
-			int const new_filename_len = mg_get_http_var(&hm->query_string, "newFilename", new_filename, 256);
-			if (new_filename_len <= 0) {
+			char path[256];
+			char file[256];
+			char new_path[256];
+			char new_file[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
+			int const file_len = mg_get_http_var(&hm->query_string, "file", file, 256);
+			int const new_path_len = mg_get_http_var(&hm->query_string, "newPath", new_path, 256);
+			int const new_file_len = mg_get_http_var(&hm->query_string, "newFile", new_file, 256);
+
+			if (path_len <= 0 || file_len <= 0 || new_path_len <= 0 || new_file_len <= 0) {
 				send_generic_error();
 				return;
 			}
 
-			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
-			std::pair<uint8, uint8> new_path = BrokeStudioFirmware::pathIndexFromStr(new_filename);
-			if (path.first >= NUM_FILE_PATHS || new_path.first >= NUM_FILE_PATHS || path.second >= NUM_FILES || new_path.second >= NUM_FILES) {
-				send_message(200, "{\"success\":\"false\"}\n", "application/json");
+			uint8 path_index = std::atoi(path);
+			uint8 file_index = std::atoi(file);
+			uint8 new_path_index = std::atoi(new_path);
+			uint8 new_file_index = std::atoi(new_file);
+			UDBG("%d %d %d %d\n", path_index, file_index, new_path_index, new_file_index);
+
+			if (path_index >= NUM_FILE_PATHS || file_index >= NUM_FILES || new_path_index >= NUM_FILE_PATHS || new_file_index >= NUM_FILES|| !self->file_exists[path_index][file_index]) {
+				send_generic_error();
 				return;
 			}
 
-			self->files[new_path.first][new_path.second] = self->files[path.first][path.second];
-			self->file_exists[new_path.first][new_path.second] = self->file_exists[path.first][path.second];
-			self->file_exists[path.first][path.second] = false;
-			self->files[path.first][path.second].clear();
+			self->files[new_path_index][new_file_index] = self->files[path_index][file_index];
+			self->file_exists[new_path_index][new_file_index] = self->file_exists[path_index][file_index];
+			self->file_exists[path_index][file_index] = false;
+			self->files[path_index][file_index].clear();
 
 			send_message(200, "{\"success\":\"true\"}\n", "application/json");
 		}else if (std::string("/api/file/download") == std::string(hm->uri.p, hm->uri.len)) {
-			char filename[256];
-			int const filename_len = mg_get_http_var(&hm->query_string, "filename", filename, 256);
-			if (filename_len <= 0) {
+			char path[256];
+			char file[256];
+			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
+			int const file_len = mg_get_http_var(&hm->query_string, "file", file, 256);
+
+			if (path_len <= 0 ||file_len <= 0) {
 				send_generic_error();
 				return;
 			}
-			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename);
 
-			if (path.first >= NUM_FILE_PATHS || path.second >= NUM_FILES || !self->file_exists[path.first][path.second]) {
+			uint8 path_index = std::atoi(path);
+			uint8 file_index = std::atoi(file);
+
+			if (path_index >= NUM_FILE_PATHS || file_index >= NUM_FILES || !self->file_exists[path_index][file_index]) {
 				send_generic_error();
 				return;
 			}
@@ -958,7 +990,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 				"Content-Type: application/octet-stream\r\n"
 				"Connection: close\r\n"
 			);
-			mg_send(nc, self->files[path.first][path.second].data(), self->files[path.first][path.second].size());
+			mg_send(nc, self->files[path_index][file_index].data(), self->files[path_index][file_index].size());
 			nc->flags |= MG_F_SEND_AND_CLOSE;
 		}else if (std::string("/api/file/upload") == std::string(hm->uri.p, hm->uri.len)) {
 			// Get boundary for multipart form in HTTP headers
@@ -1020,32 +1052,67 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			}
 
 			// Process request
-			std::map<std::string, std::string>::const_iterator file_data = params.find("file");
-			std::map<std::string, std::string>::const_iterator filename = params.find("path");
-			if (file_data == params.end() || filename == params.end()) {
+			std::map<std::string, std::string>::const_iterator file_data = params.find("file_data");
+			std::map<std::string, std::string>::const_iterator path = params.find("path");
+			std::map<std::string, std::string>::const_iterator file = params.find("file");
+
+			if (file_data == params.end() || path == params.end() || file == params.end()) {
 				send_generic_error();
 				return;
 			}
-			std::pair<uint8, uint8> path = BrokeStudioFirmware::pathIndexFromStr(filename->second);
-			if (path.second == NO_WORKING_FILE) {
-				send_generic_error();
-				return;
-			}
-			self->files[path.first][path.second] = std::vector<uint8>(file_data->second.begin(), file_data->second.end());
-			self->file_exists[path.first][path.second] = true;
+
+			uint8 path_index = std::atoi(path->second.c_str());
+			uint8 file_index = std::atoi(file->second.c_str());
+
+			self->files[path_index][file_index] = std::vector<uint8>(file_data->second.begin(), file_data->second.end());
+			self->file_exists[path_index][file_index] = true;
 
 			UDBG("Upload sucessful\n");
 
 			// Return something webbrowser friendly
-			send_message(200, "<html><body><p>Upload success</p></body></html>\n", "text/html");
+			send_message(200, "{\"success\":\"true\"}\n", "application/json");
 		}else {
 			char const* www_root = ::getenv("RAINBOW_WWW_ROOT");
 			if (www_root == NULL) {
-				send_message(
-					200,
-					R"-(<html><body><form action="/api/file/upload" method="post" enctype="multipart/form-data"><input name="file" type="file"><br /><input name="path" type="text" value="/USER/file10.bin"><br /><button type="submit">Upload</button></form></body></html>)-",
-					"text/html"
-				);
+				std::string upload_form = R"-(<!doctype html><html><head><style>*{margin:2px}body{font-family:Arial}</style></style>)-";
+				upload_form += R"-(<body><h1>Upload file to Rainbow:</h1>)-";
+				upload_form += R"-(<input id="file_data" name="file_data" type="file"><br/>)-";
+				upload_form += R"-(Path: <select id="path" name="path"><option value="0">SAVE</option><option value="1">ROMS</option><option value="2">USER</option></select><br />)-";
+				upload_form += R"-(File: <select id="file" name="file">)-";
+				for (uint8 i = 0; i < NUM_FILES; i++)
+				{
+					upload_form += "<option value=\"" + std::to_string(i) + "\">" + std::to_string(i) + "</option>";
+				}
+				upload_form += "</select><br/>";
+				upload_form += R"-(<button id="btnSubmit" type="submit" onclick="handleSubmit()">Upload</button>)-";
+				upload_form += "<script>function handleSubmit(){";
+				upload_form += R"-(btnSubmit.disabled=true;)-";
+				upload_form += R"-(btnSubmit.innerHTML = "Uploading...";)-";
+				upload_form += R"-(let formData = new FormData();)-";
+				upload_form += R"-(formData.append("file_data", file_data.files[0]);)-";
+				upload_form += R"-(let path_index = path.options[path.selectedIndex].value;)-";
+				upload_form += R"-(formData.append("path", path.value);)-";
+				upload_form += R"-(formData.append("file", file.value);)-";
+				upload_form += R"-(let xhr = new XMLHttpRequest();)-";
+				upload_form += R"-(xhr.open("POST", "/api/file/upload");)-";
+				upload_form += R"-(xhr.onreadystatechange = function () {)-";
+				upload_form += R"-(if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {)-";
+				upload_form += R"-(var r = JSON.parse(this.responseText);)-";
+				upload_form += R"-(if (r.success) alert("File uploaded successfully.");)-";
+				upload_form += R"-(else alert('Error while uploading the file.');)-";
+				upload_form += R"-(btnSubmit.disabled=false;)-";
+				upload_form += R"-(btnSubmit.innerHTML = "Upload";)-";
+				upload_form += R"-(})-";
+				upload_form += R"-(if (this.readyState === XMLHttpRequest.DONE && this.status === 0) {)-";
+				upload_form += R"-(alert('Please check your connection.');)-";
+				upload_form += R"-(btnSubmit.disabled=false;)-";
+				upload_form += R"-(btnSubmit.innerHTML = "Upload";)-";
+				upload_form += R"-(})-";
+				upload_form += R"-(};)-";
+				upload_form += R"-(xhr.send(formData);)-";
+				upload_form += "}</script>";
+				upload_form += "</body></html>";
+				send_message(200, upload_form.c_str(), "text/html");
 			}else {
 				// Translate url path to a file path on disk
 				assert(hm->uri.len > 0); // Impossible as HTTP header are constructed in such a way that there is always at least one char in path (I think)
@@ -1058,11 +1125,19 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 				// Serve file
 				try {
 					std::vector<uint8> contents = readHostFile(file_path);
-
-					mg_send_response_line(
-						nc, 200,
-						"Content-Type: text/html\r\n" //TODO guess mime type, mongoose has a function for that (mg_get_mime_type) but it is private
+					// Basic / naive mime type handler
+					std::string ext = file_path.substr(file_path.find_last_of(".") + 1);
+					std::string mime_type = "";
+					if (ext == "html") mime_type = "text/html";
+					else if (ext == "css") mime_type = "text/css";
+					else if (ext == "js") mime_type = "application/javascript";
+					else mime_type = "application/octet-stream";
+					std::string content_type(
+						"Content-Type: " + mime_type + "\r\n" +
 						"Connection: close\r\n"
+					);
+					mg_send_response_line(
+						nc, 200, content_type.c_str()
 					);
 					mg_send(nc, contents.data(), contents.size());
 					nc->flags |= MG_F_SEND_AND_CLOSE;
