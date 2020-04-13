@@ -117,6 +117,7 @@ private:
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
+	std::deque<std::deque<uint8>> tx_messages;
 
 	std::array<std::array<std::vector<uint8>, NUM_FILES>, NUM_FILE_PATHS> files;
 	std::array<std::array<bool, NUM_FILES>, NUM_FILE_PATHS> file_exists;
