@@ -9,6 +9,13 @@ switch_bank:
 	.byt 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
 .)
 
+nibble_to_hex:
+.(
+	clc
+	adc #TILE_INDEX_0
+	rts
+.)
+
 fetch_controllers:
 .(
 	; Fetch controllers state

@@ -207,6 +207,33 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->tx_messages.clear();
 			this->rx_buffer.clear();
 			break;
+		case n2e_cmds_t::E2N_BUFFER_DROP:
+			UDBG("RAINBOW BrokeStudioFirmware received message E2N_BUFFER_DROP\n");
+			if (message_size == 3) {
+				uint8 const message_type = this->rx_buffer.at(2);
+				uint8 const n_keep = this->rx_buffer.at(3);
+
+				size_t i = 0;
+				for (
+					std::deque<std::deque<uint8>>::iterator message = this->tx_messages.end();
+					message != this->tx_messages.begin();
+				)
+				{
+					--message;
+					if (message->at(1) == message_type) {
+						++i;
+						if (i > n_keep) {
+							UDBG("RAINBOW BrokeStudioFirmware erase message: index=%d\n", message - this->tx_messages.begin());
+							message = this->tx_messages.erase(message);
+						}else {
+							UDBG("RAINBOW BrokeStudioFirmware keep message: index=%d - too recent\n", message - this->tx_messages.begin());
+						}
+					}else {
+						UDBG("RAINBOW BrokeStudioFirmware keep message: index=%d - bad type\n", message - this->tx_messages.begin());
+					}
+				}
+			}
+			break;
 		case n2e_cmds_t::GET_WIFI_STATUS:
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
 			this->tx_messages.push_back({2, static_cast<uint8>(e2n_cmds_t::WIFI_STATUS), 3}); // Simple answer, wifi is ok
@@ -275,6 +302,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			});
 			break;
 		}
+		case n2e_cmds_t::GET_SERVER_PING:
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_PING\n");
+			//TODO
+			UDBG("RAINBOW BrokeStudioFirmware not implemented\n");
+			break;
 		case n2e_cmds_t::SET_SERVER_PROTOCOL: {
 			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_PROTOCOL\n");
 			if (message_size == 2) {
@@ -359,7 +391,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
+				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
 					this->tx_messages.push_back({
 						2,
 						static_cast<uint8>(e2n_cmds_t::FILE_EXISTS),
@@ -526,30 +558,28 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
-				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
-					if (this->file_exists[path][file]) {
-						// Compute info
-						uint32 file_crc32;
-						file_crc32 = CalcCRC32(0L, this->files[path][file].data(), this->files[path][file].size());
+				if (path < NUM_FILE_PATHS && file < NUM_FILES && this->file_exists[path][file]) {
+					// Compute info
+					uint32 file_crc32;
+					file_crc32 = CalcCRC32(0L, this->files[path][file].data(), this->files[path][file].size());
 
-						uint32 file_size = this->files[path][file].size();
+					uint32 file_size = this->files[path][file].size();
 
-						// Send info
-						this->tx_messages.push_back({
-							9,
-							static_cast<uint8>(e2n_cmds_t::FILE_INFO),
+					// Send info
+					this->tx_messages.push_back({
+						9,
+						static_cast<uint8>(e2n_cmds_t::FILE_INFO),
 
-							static_cast<uint8>((file_crc32 >> 24) & 0xff),
-							static_cast<uint8>((file_crc32 >> 16) & 0xff),
-							static_cast<uint8>((file_crc32 >> 8) & 0xff),
-							static_cast<uint8>(file_crc32 & 0xff),
+						static_cast<uint8>((file_crc32 >> 24) & 0xff),
+						static_cast<uint8>((file_crc32 >> 16) & 0xff),
+						static_cast<uint8>((file_crc32 >> 8) & 0xff),
+						static_cast<uint8>(file_crc32 & 0xff),
 
-							static_cast<uint8>((file_size >> 24) & 0xff),
-							static_cast<uint8>((file_size >> 16) & 0xff),
-							static_cast<uint8>((file_size >> 8 ) & 0xff),
-							static_cast<uint8>(file_size & 0xff)
-						});
-					}
+						static_cast<uint8>((file_size >> 24) & 0xff),
+						static_cast<uint8>((file_size >> 16) & 0xff),
+						static_cast<uint8>((file_size >> 8 ) & 0xff),
+						static_cast<uint8>(file_size & 0xff)
+					});
 				}else {
 					// File not found or path/file out of bounds
 					this->tx_messages.push_back({
