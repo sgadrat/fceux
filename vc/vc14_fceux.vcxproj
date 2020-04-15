@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project InitialTargets="UNDUPOBJ" DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -484,11 +484,12 @@
     <ClCompile Include="..\src\boards\pec-586.cpp" />
     <ClCompile Include="..\src\boards\rainbow512.cpp" />
     <ClCompile Include="..\src\boards\rainbow_esp.cpp" />
+    <ClCompile Include="..\src\boards\rainbow.cpp" />
     <ClCompile Include="..\src\boards\rt-01.cpp" />
     <ClCompile Include="..\src\boards\sa-9602b.cpp" />
     <ClCompile Include="..\src\boards\sb-2000.cpp" />
     <ClCompile Include="..\src\boards\transformer.cpp" />
-    <ClCompile Include="..\src\boards\rainbow.cpp" />
+    <ClCompile Include="..\src\boards\rainbow_nrom.cpp" />
     <ClCompile Include="..\src\boards\unrom512.cpp" />
     <ClCompile Include="..\src\boards\vrc1.cpp" />
     <ClCompile Include="..\src\boards\vrc2and4.cpp" />

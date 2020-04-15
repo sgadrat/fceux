@@ -1,17 +1,33 @@
+/* FCE Ultra - NES/Famicom Emulator
+ *
+ * Copyright notice for this file:
+ *  Copyright (C) 2020 Broke Studio
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+// mapper 3871 - Rainbow board by Broke Studio
+//
+// documentation available here: https://github.com/BrokeStudio/rainbow-lib
+
 #include "mapinc.h"
 #include "../ines.h"
-
-#include "easywsclient.hpp"
-#include "mongoose.h"
 #include "rainbow_esp.h"
 
-#include <algorithm>
-#include <array>
-#include <limits>
-#include <sstream>
-
 #undef RAINBOW_DEBUG
-//define RAINBOW_DEBUG
+ //define RAINBOW_DEBUG
 
 #ifdef RAINBOW_DEBUG
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
@@ -19,94 +35,92 @@
 #define UDBG(...)
 #endif
 
-//////////////////////////////////////
-// Mapper implementation
+#define MIRR_VERTICAL       0b00 // VRAM
+#define MIRR_HORIZONTAL     0b01 // VRAM
+#define MIRR_ONE_SCREEN     0b10 // VRAM [+ CHR-RAM]
+#define MIRR_FOUR_SCREEN    0b11 // CHR-RAM
 
-namespace {
-/* Flash write unlock sequence logic */
+#define CHR_MODE_1K         0b00 // 1K mode
+#define CHR_MODE_2K         0b01 // 2K mode
+#define CHR_MODE_4K         0b10 // 4K mode
+#define CHR_MODE_8K         0b11 // 8K mode
 
-enum class flash_write_mode_t : uint8 {
-	WRITE_DISABLED,
-	ERASE_SECTOR,
-	WRITE_BYTE,
-};
+#define PRG_MODE_16K_8K     0b0 // 16K + 8K + 8K fixed
+#define PRG_MODE_8K_8K_8K   0b1 // 8K + 8K + 8K fixed
 
-class FlashSequenceCounter {
-public:
-	FlashSequenceCounter(std::array<uint32, 5> const& sequence_addresses);
-	void reset();
-	flash_write_mode_t addWrite(uint32 address, uint8 value);
-private:
-	std::array<uint32, 5> sequence_addresses;
-	uint8 sequence_position = 0;
-};
-
-FlashSequenceCounter::FlashSequenceCounter(std::array<uint32, 5> const& sequence_addresses)
-: sequence_addresses(sequence_addresses)
-{
-}
-
-void FlashSequenceCounter::reset() {
-	this->sequence_position = 0;
-}
-
-flash_write_mode_t FlashSequenceCounter::addWrite(uint32 address, uint8 value) {
-	uint8 const sequence_values[5] = {0xaa, 0x55, 0x80, 0xaa, 0x55};
-
-	if (address == this->sequence_addresses[this->sequence_position] && value == sequence_values[this->sequence_position]) {
-		++this->sequence_position;
-		if (this->sequence_position == 5) {
-			return flash_write_mode_t::ERASE_SECTOR;
-		}else {
-			return flash_write_mode_t::WRITE_DISABLED;
-		}
-	}else if (this->sequence_position == 2 && value == 0xa0) {
-		return flash_write_mode_t::WRITE_BYTE;
-	}else {
-		this->reset();
-		return flash_write_mode_t::WRITE_DISABLED;
-	}
-}
-
-}
-
-/* Mapper state */
+static uint8 prg[3], chr[8], wram_bank;
+static uint8 prg_mode, chr_mode;
+static uint8 mirr_mode, nt_set;
+static uint8 mul[2];
 
 static uint8 *WRAM = NULL;
-static uint32 WRAMSIZE;
-static uint8 * flash_prg = NULL;
-static bool * flash_prg_written = NULL;
-static uint32 const flash_prg_size = 32 * 1024;
-static uint8 * flash_chr = NULL;
-static bool * flash_chr_written = NULL;
-static uint32 const flash_chr_size = 8 * 1024;
+const uint32 WRAMSIZE = 32 * 1024;
+
+static uint8 *CHRRAM = NULL;
+const uint32 CHRRAMSIZE = 32 * 1024;
+
+extern uint8 *ExtraNTARAM;
+
+extern uint8 IRQCount, IRQLatch, IRQa;
+extern uint8 IRQReload;
+
+static uint8 flash_mode[2];
+static uint8 flash_sequence[2];
+static uint8 flash_id[2];
+
+static uint8 *PRG_FLASHROM = NULL;
+const uint32 PRG_FLASHROMSIZE = 1024 * 512;
+
+static uint8 *CHR_FLASHROM = NULL;
+const uint32 CHR_FLASHROMSIZE = 1024 * 512;
+
+static SFORMAT FlashRegs[] =
+{
+	{ &flash_mode, 2, "FMOD" },
+	{ &flash_sequence, 2, "FSEQ" },
+	{ &flash_id, 2, "FMID" },
+	{ 0 }
+};
+
+static SFORMAT RainbowStateRegs[] =
+{
+	{ prg, 3, "PRG" },
+	{ chr, 8, "CHR" },
+	{ &IRQReload, 1, "IRQR" },
+	{ &IRQCount, 1, "IRQC" },
+	{ &IRQLatch, 1, "IRQL" },
+	{ &IRQa, 1, "IRQA" },
+	{ 0 }
+};
+
+static void(*sfun[3]) (void);
+static uint8 vpsg1[8];
+static uint8 vpsg2[4];
+static int32 cvbc[3];
+static int32 vcount[3];
+static int32 dcount[2];
+static uint8 channels;
+
+static SFORMAT SStateRegs[] =
+{
+	{ vpsg1, 8, "PSG1" },
+	{ vpsg2, 4, "PSG2" },
+	{ 0 }
+};
+
+enum CHIP_TYPE
+{
+	prg_chip = 0,
+	chr_chip
+};
+
+// ESP interface
+
 static EspFirmware *esp = NULL;
 static bool esp_enable = true;
 static bool irq_enable = true;
-static FlashSequenceCounter flash_prg_sequence_counter({0xd555, 0xaaaa, 0xd555, 0xd555, 0xaaaa});
-static flash_write_mode_t flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-static FlashSequenceCounter flash_chr_sequence_counter({0x1555, 0x0aaa, 0x1555, 0x1555, 0x0aaa});
-static flash_write_mode_t flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
 
-/* ESP interface */
-
-static DECLFW(RAINBOWWrite) {
-	UDBG("RAINBOW write %04x %02x\n", A, V);
-	esp->rx(V);
-}
-
-static DECLFR(RAINBOWRead) {
-	UDBG("RAINBOW read %04x\n", A);
-	return esp->tx();
-}
-
-static DECLFW(RAINBOWWriteFlags) {
-	UDBG("RAINBOW write %04x %02x\n", A, V);
-	esp_enable = V & 0x01;
-	irq_enable = V & 0x40;
-}
-
-static DECLFR(RAINBOWReadFlags) {
+static DECLFR(RainbowEspReadFlags) {
 	uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
 	uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
 	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
@@ -114,203 +128,871 @@ static DECLFR(RAINBOWReadFlags) {
 	return esp_rts_flag | esp_enable_flag | irq_enable_flag;
 }
 
-static void RAINBOWMapIrq(int32) {
-	if (irq_enable) {
-		if (esp->getGpio15()) {
+static void RainbowEspMapIrq(int32) {
+	if (irq_enable)
+	{
+		if (esp->getGpio15())
+		{
 			X6502_IRQBegin(FCEU_IQEXT);
-		} else {
+		}
+		else
+		{
 			X6502_IRQEnd(FCEU_IQEXT);
 		}
 	}
 }
 
-/* Flash memory writing logic */
+// Mapper
 
-DECLFW(RAINBOWWriteFlash) {
-	assert(0x8000 <= A && A <= 0xffff);
-	UDBG("RAINBOW write flash %04x => %02x\n", A, V);
-	bool reset_flash_mode = false;
-	switch (flash_prg_write_mode) {
-		case flash_write_mode_t::WRITE_DISABLED:
-			flash_prg_write_mode = flash_prg_sequence_counter.addWrite(A, V);
-			break;
-		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("RAINBOW erase sector %04x %02x\n", A, V);
-			if (A == 0x8000 || A == 0x9000 || A == 0xa000 || A == 0xb000 || A == 0xc000 || A == 0xd000 || A == 0xe000 || A == 0xf000) {
-				::memset(flash_prg + (A - 0x8000), 0xff, 0x1000);
-				for (uint32 i = A; i < A + 0x1000; ++i) {
-					flash_prg_written[i - 0x8000] = true;
-				}
-				for (uint32_t c = 0; c < 0x1000; ++c) {
-					UDBG("%02x", flash_prg[(A - 0x8000) + c]);
-				}
-				UDBG("\n");
+static void Sync(void) {
+	static uint8 *address;
+	uint32 start;
+	uint32 offset;
+
+	if (prg_mode == PRG_MODE_16K_8K)
+	{
+		if (prg[0] & 0x80)
+		{
+			setprg8r(0x10, 0x8000, prg[0] & 0x03);
+			setprg8r(0x10, 0xa000, (prg[0] + 1) & 0x03);
+		}
+		else
+			setprg16r(0x11, 0x8000, prg[0]);
+
+		if (prg[2] & 0x80)
+			setprg8r(0x10, 0xc000, prg[2] & 0x03);
+		else
+			setprg8r(0x11, 0xc000, prg[2] & 0x3f);
+	}
+
+	if (prg_mode == PRG_MODE_8K_8K_8K)
+	{
+		if (prg[0] & 0x80)
+			setprg8r(0x10, 0x8000, prg[0] & 0x03);
+		else
+			setprg8r(0x11, 0x8000, prg[0] & 0x3f);
+
+		if (prg[1] & 0x80)
+			setprg8r(0x10, 0xa000, prg[1] & 0x03);
+		else
+			setprg8r(0x11, 0xa000, prg[1] & 0x3f);
+
+		if (prg[2] & 0x80)
+			setprg8r(0x10, 0xc000, prg[2] & 0x03);
+		else
+			setprg8r(0x11, 0xc000, prg[2] & 0x3f);
+	}
+	
+	setprg8r(0x11, 0xe000, ~0);
+
+	if (wram_bank & 0x80)
+		setprg8r(0x10, 0x6000, wram_bank & 0x03);
+	else
+		setprg8r(0x11, 0x6000, wram_bank & 0x7f);
+
+	switch (chr_mode)
+	{
+	case CHR_MODE_1K:
+		for (uint8 i = 0; i < 8; i++) {
+			if ((i < 4) | (CHRRAM != NULL))
+				setchr1r(0x10, i << 10, chr[i]);
+			else
+				setchr1r(0x10, i << 10, chr[i] + 256);
+		}
+		break;
+	case CHR_MODE_2K:
+		setchr2r(0x10, 0x0000, chr[0]);
+		setchr2r(0x10, 0x0800, chr[1]);
+		setchr2r(0x10, 0x1000, chr[2]);
+		setchr2r(0x10, 0x1800, chr[3]);
+		break;
+	case CHR_MODE_4K:
+		setchr4r(0x10, 0x0000, chr[0]);
+		setchr4r(0x10, 0x1000, chr[1]);
+		break;
+	case CHR_MODE_8K:
+		setchr8r(0x10, chr[0]);
+		break;
+	}
+
+	switch (mirr_mode)
+	{
+	case MIRR_VERTICAL:
+		setmirror(MI_V);
+		break;
+	case MIRR_HORIZONTAL:
+		setmirror(MI_H);
+		break;
+	case MIRR_ONE_SCREEN:
+		FCEUPPU_LineUpdate();
+		switch (nt_set)
+		{
+		case 0: address = NTARAM; break;
+		case 1: address = NTARAM + 0x400; break;
+		case 2: address = (CHRRAM != NULL) ? ExtraNTARAM : NTARAM; break;
+		case 3: address = (CHRRAM != NULL) ? ExtraNTARAM + 0x400 : NTARAM + 0x400; break;
+		}
+		vnapage[0] = vnapage[1] = vnapage[2] = vnapage[3] = address;
+		PPUNTARAM = 0x0F;
+		break;
+	case MIRR_FOUR_SCREEN:
+		if (CHRRAM != NULL)
+		{
+			FCEUPPU_LineUpdate();
+			for (int i = 0; i < 4; i++)
+			{
+				start = (28 - (nt_set & 0x01) * 4) * 1024;
+				offset = i * 0x400;
+				vnapage[i] = CHRRAM + start + offset;
 			}
-			reset_flash_mode = true;
-			break;
-		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("RAINBOW write byte %04x %02x (previous=%02x)\n", A, V, flash_prg[A - 0x8000]);
-			flash_prg[A - 0x8000] &= V;
-			flash_prg_written[A - 0x8000] = true;
-			reset_flash_mode = true;
-			break;
+			PPUNTARAM = 0x0F;
+		}
+		else
+			setmirror(MI_V);
+	}
+}
+
+static DECLFW(RainbowSW) {
+	if (A >= 0x5800 && A <= 0x5802)
+	{
+		vpsg1[A & 3] = V;
+		if (sfun[0])
+			sfun[0]();
+	}
+	else if (A >= 0x5803 && A <= 0x5805)
+	{
+		vpsg1[4 | ((A - 3 ) & 3)] = V;
+		if (sfun[1])
+			sfun[1]();
+	}
+	else if (A >= 0x5C00 && A <= 0x5C02)
+	{
+		vpsg2[A & 3] = V;
+		if (sfun[2])
+			sfun[2]();
+	}
+}
+
+static DECLFR(RainbowRead) {
+	switch (A)
+	{
+	case 0x5000:
+		return esp->tx();
+	case 0x5001:
+	{
+		uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
+		uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
+		uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
+		return esp_rts_flag | esp_enable_flag | irq_enable_flag;
+	}
+	case 0x5006:
+		return (nt_set << 6) | (mirr_mode << 4) | (chr_mode << 2) | prg_mode;
+	case 0x5806:
+		return((mul[0] * mul[1]) >> 8);
+	case 0x5807:
+		return(mul[0] * mul[1]);
+	default:
+		return(X.DB);
+	}
+}
+
+static DECLFW(RainbowWrite) {
+	switch (A)
+	{
+	case 0x5000: esp->rx(V); break;
+	case 0x5001:
+		esp_enable = V & 0x01;
+		irq_enable = V & 0x40;
+		break;
+	case 0x5002: prg[0] = V; Sync(); break;
+	case 0x5003: prg[1] = V & 0x3f; Sync(); break;
+	case 0x5004: prg[2] = V & 0x3f; Sync(); break;
+	case 0x5005: wram_bank = V; Sync(); break;
+	case 0x5006: 
+		prg_mode = V & 0x01;
+		chr_mode = (V & 0x0C) >> 2;
+		mirr_mode = (V & 0x30) >> 4;
+		nt_set = (V & 0xC0) >> 6;
+		Sync();
+		break;
+	case 0x5007: channels = V & 0x07; break;
+
+	case 0x5400: chr[0] = V; Sync(); break;
+	case 0x5401: chr[1] = V; Sync(); break;
+	case 0x5402: chr[2] = V; Sync(); break;
+	case 0x5403: chr[3] = V; Sync(); break;
+	case 0x5404: chr[4] = V; Sync(); break;
+	case 0x5405: chr[5] = V; Sync(); break;
+	case 0x5406: chr[6] = V; Sync(); break;
+	case 0x5407: chr[7] = V; Sync(); break;
+
+	case 0x5806: mul[0] = V; break;
+	case 0x5807: mul[1] = V; break;
+
+	case 0x5C03: IRQLatch = V; break;
+	case 0x5C04: IRQReload = 1; break;
+	case 0x5C05:
+		if (V == 0)
+		{
+			X6502_IRQEnd(FCEU_IQEXT);
+			IRQa = 0;
+		}
+		else
+			IRQa = 1;
+		break;
+	}
+}
+
+static void ClockRainbowCounter(void) {
+	int count = IRQCount;
+	if (!count || IRQReload)
+	{
+		IRQCount = IRQLatch;
+		IRQReload = 0;
+	}
+	else
+		IRQCount--;
+
+	if ((count | 1) && !IRQCount)
+	{
+		if (IRQa)
+			X6502_IRQBegin(FCEU_IQEXT);
+	}
+}
+
+static void Rainbowhb() {
+	ClockRainbowCounter();
+}
+
+uint8 RainbowFlashID(uint32 A) {
+	// Software ID mode is undefined by the datasheet for all but the lowest 2 addressable bytes,
+	// but some tests of the chip currently being used found it repeats in 512-byte patterns.
+	// http://forums.nesdev.com/viewtopic.php?p=178728#p178728
+
+	uint32 aid = A & 0x1FF;
+	switch (aid)
+	{
+	case 0:  return 0xBF;
+	case 1:  return 0xB7;
+	default: return 0xFF;
+	}
+}
+
+uint8 FASTCALL RainbowFlashChrID(uint32 A) {
+	return RainbowFlashID(A);
+}
+
+static DECLFR(RainbowFlashPrgID)
+{
+	return RainbowFlashID(A);
+}
+
+void RainbowFlashIDEnter(CHIP_TYPE chip)
+{
+	switch (chip)
+	{
+	case prg_chip:
+		if (flash_id[chip])
+			return;
+		flash_id[chip] = 1;
+		SetReadHandler(0x8000, 0xFFFF, RainbowFlashPrgID);
+		break;
+	case chr_chip:
+		if (flash_id[chip])
+			return;
+		flash_id[chip] = 1;
+		FFCEUX_PPURead = RainbowFlashChrID;
+		break;
+	default:
+		return;
+	}
+}
+
+void RainbowFlashIDExit(CHIP_TYPE chip)
+{
+	switch (chip)
+	{
+	case prg_chip:
+		if (!flash_id[chip])
+			return;
+		flash_id[chip] = 0;
+		SetReadHandler(0x8000, 0xFFFF, CartBR);
+		break;
+	case chr_chip:
+		if (!flash_id[chip])
+			return;
+		flash_id[chip] = 0;
+		FFCEUX_PPURead = FFCEUX_PPURead_Default;
+		break;
+	default:
+		return;
+	}
+}
+
+void RainbowFlash(CHIP_TYPE chip, uint32 flash_addr, uint8 V) {
+
+	uint32 command_addr = flash_addr & 0x7FFF;
+
+	enum
+	{
+		flash_mode_READY = 0,
+		flash_mode_COMMAND,
+		flash_mode_BYTE_WRITE,
+		flash_mode_ERASE,
 	};
 
-	if (reset_flash_mode) {
-		flash_prg_sequence_counter.reset();
-		flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-	}
-}
-
-DECLFR(RAINBOWReadFlash) {
-	assert(0x8000 <= A && A <= 0xffff);
-	//UDBG("RAINBOW read flash %04x\n", A);
-	if (flash_prg_written[A - 0x8000]) {
-		//UDBG("RAINBOW    read from flash %04x => %02x\n", A, flash[A - 0x8000]);
-		return flash_prg[A - 0x8000];
-	}
-	//UDBG("RAINBOW    from PRG\n");
-	return CartBR(A);
-}
-
-static void RAINBOWWritePPUFlash(uint32 A, uint8 V) {
-	assert(A <= 0x1fff);
-	UDBG("RAINBOW write PPU flash %04x => %02x\n", A, V);
-	bool reset_flash_mode = false;
-	switch (flash_chr_write_mode) {
-		case flash_write_mode_t::WRITE_DISABLED:
-			flash_chr_write_mode = flash_chr_sequence_counter.addWrite(A, V);
-			break;
-		case flash_write_mode_t::ERASE_SECTOR:
-			UDBG("RAINBOW erase CHR sector %04x %02x\n", A, V);
-			if (A == 0x0000 || A == 0x0800 || A == 0x1000 || A == 0x1800) {
-				::memset(flash_chr + A, 0xff, 0x0800);
-				for (uint32 i = A; i < A + 0x0800; ++i) {
-					flash_chr_written[i] = true;
-				}
-				for (uint32_t c = 0; c < 0x0800; ++c) {
-					UDBG("%02x", flash_chr[A + c]);
-				}
-				UDBG("\n");
+	switch (flash_mode[chip])
+	{
+	default:
+	case flash_mode_READY:
+		if (command_addr == 0x5555 && V == 0xAA)
+		{
+			flash_mode[chip] = flash_mode_COMMAND;
+			flash_sequence[chip] = 0;
+		}
+		else if (V == 0xF0)
+		{
+			RainbowFlashIDExit(chip);
+		}
+		break;
+	case flash_mode_COMMAND:
+		if (flash_sequence[chip] == 0)
+		{
+			if (command_addr == 0x2AAA && V == 0x55)
+			{
+				flash_sequence[chip] = 1;
 			}
-			reset_flash_mode = true;
-			break;
-		case flash_write_mode_t::WRITE_BYTE:
-			UDBG("RAINBOW write CHR byte %04x %02x (previous=%02x)\n", A, V, flash_chr[A]);
-			flash_chr[A] &= V;
-			flash_chr_written[A] = true;
-			reset_flash_mode = true;
-			break;
-	};
-
-	if (reset_flash_mode) {
-		flash_chr_sequence_counter.reset();
-		flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
+			else
+			{
+				flash_mode[chip] = flash_mode_READY;
+			}
+		}
+		else if (flash_sequence[chip] == 1)
+		{
+			if (command_addr == 0x5555)
+			{
+				flash_sequence[chip] = 0;
+				switch (V)
+				{
+				default:   flash_mode[chip] = flash_mode_READY; break;
+				case 0xA0: flash_mode[chip] = flash_mode_BYTE_WRITE; break;
+				case 0x80: flash_mode[chip] = flash_mode_ERASE; break;
+				case 0x90: RainbowFlashIDEnter(chip); flash_mode[chip] = flash_mode_READY; break;
+				case 0xF0: RainbowFlashIDExit(chip); flash_mode[chip] = flash_mode_READY; break;
+				}
+			}
+			else
+				flash_mode[chip] = flash_mode_READY;
+		}
+		else
+			flash_mode[chip] = flash_mode_READY; // should be unreachable
+		break;
+	case flash_mode_BYTE_WRITE:
+		if (chip == CHIP_TYPE::prg_chip)
+		{
+			PRG_FLASHROM[flash_addr] &= V;
+		}
+		else if (chip == CHIP_TYPE::chr_chip)
+		{
+			CHR_FLASHROM[flash_addr] &= V;
+		}
+		flash_mode[chip] = flash_mode_READY;
+		break;
+	case flash_mode_ERASE:
+		if (flash_sequence[chip] == 0)
+		{
+			if (command_addr == 0x5555 && V == 0xAA)
+				flash_sequence[chip] = 1;
+			else
+				flash_mode[chip] = flash_mode_READY;
+		}
+		else if (flash_sequence[chip] == 1)
+		{
+			if (command_addr == 0x2AAA && V == 0x55)
+				flash_sequence[chip] = 2;
+			else
+				flash_mode[chip] = flash_mode_READY;
+		}
+		else if (flash_sequence[chip] == 2)
+		{
+			if (command_addr == 0x5555 && V == 0x10) // erase chip
+			{
+				if (chip == CHIP_TYPE::prg_chip)
+				{
+					memset(PRG_FLASHROM, 0xFF, PRG_FLASHROMSIZE);
+				}
+				else if (chip == CHIP_TYPE::chr_chip)
+				{
+					memset(CHR_FLASHROM, 0xFF, CHR_FLASHROMSIZE);
+				}
+			}
+			else if (V == 0x30) // erase 4k sector
+			{
+				uint32 sector = flash_addr & 0x7F000;
+				if (chip == CHIP_TYPE::prg_chip)
+				{
+					memset(PRG_FLASHROM + sector, 0xFF, 1024 * 4);
+				}
+				else if (chip == CHIP_TYPE::chr_chip)
+				{
+					memset(CHR_FLASHROM + sector, 0xFF, 1024 * 4);
+				}
+			}
+			flash_mode[chip] = flash_mode_READY;
+		}
+		else
+			flash_mode[chip] = flash_mode_READY; // should be unreachable
+		break;
 	}
 }
 
-static void RAINBOWPPUWrite(uint32 A, uint8 V) {
-	if (A < 0x2000) {
-		RAINBOWWritePPUFlash(A, V);
+static DECLFW(RainbowPrgFlash) {
+	if (A < 0x8000 || A > 0xFFFF)
+		return;
+
+	uint32 flash_addr = A;
+	switch (prg_mode)
+	{
+	case PRG_MODE_8K_8K_8K:
+		flash_addr &= 0x1FFF;
+		if ((A >= 0x8000) & (A <= 0x9FFF))
+		{
+			flash_addr |= (prg[0] & 0x3F) << 13;
+		}
+		else if ((A >= 0xA000) & (A <= 0xBFFF))
+		{
+			flash_addr |= (prg[1] & 0x3F) << 13;
+		}
+		else if ((A >= 0xC000) & (A <= 0xDFFF))
+		{
+			flash_addr |= (prg[2] & 0x3F) << 13;
+		}
+		break;
+	case PRG_MODE_16K_8K:
+		if ((A >= 0x8000) & (A <= 0xBFFF))
+		{
+			flash_addr &= 0x3FFF;
+			flash_addr |= (prg[0] & 0x3F) << 14;
+		}
+		else if ((A >= 0xC000) & (A <= 0xDFFF))
+		{
+			flash_addr &= 0x1FFF;
+			flash_addr |= (prg[2] & 0x3F) << 13;
+		}
+		break;
+	default:
+		return;
+	}
+	RainbowFlash(CHIP_TYPE::prg_chip, flash_addr, V);
+}
+
+static void RainbowPPUWrite(uint32 A, uint8 V) {
+	uint32 flash_addr = A;
+	if (A < 0x2000)
+	{
+		switch (chr_mode)
+		{
+		case CHR_MODE_1K:
+			flash_addr &= 0x3FF;
+			flash_addr |= chr[A >> 10] << 10;
+			break;
+		case CHR_MODE_2K:
+			flash_addr &= 0x7FF;
+			flash_addr |= chr[A >> 11] << 11;
+			break;
+		case CHR_MODE_4K:
+			flash_addr &= 0xFFF;
+			flash_addr |= chr[A >> 12] << 12;
+			break;
+		case CHR_MODE_8K:
+		default:
+			flash_addr &= 0x1FFF;
+			flash_addr |= chr[0] << 13;
+			break;
+		}
+		RainbowFlash(CHIP_TYPE::chr_chip, flash_addr, V);
 	}
 	FFCEUX_PPUWrite_Default(A, V);
 }
 
-uint8 FASTCALL RAINBOWPPURead(uint32 A) {
-	if (A < 0x2000 && flash_chr_written[A]) {
-		if (PPU_hook) PPU_hook(A);
-		return flash_chr[A];
-	}
-	return FFCEUX_PPURead_Default(A);
-}
+static void RainbowPower(void) {
 
-/* Mapper initialization and cleaning */
-
-static void LatchClose(void) {
-	UDBG("RAINBOW latch close\n");
-	if (WRAM) {
-		FCEU_gfree(WRAM);
-	}
-	WRAM = NULL;
-
-	if (flash_prg) {
-		FCEU_gfree(flash_prg);
-		FCEU_gfree(flash_prg_written);
-	}
-	flash_prg = NULL;
-	flash_prg_written = NULL;
-
-	if (flash_chr) {
-		FCEU_gfree(flash_chr);
-		FCEU_gfree(flash_chr_written);
-	}
-	flash_chr = NULL;
-	flash_chr_written = NULL;
-
-	delete esp;
-}
-
-static void RAINBOWPower(void) {
-	UDBG("RAINBOW power\n");
-	setprg8r(0x10, 0x6000, 0);	// Famili BASIC (v3.0) need it (uses only 4KB), FP-BASIC uses 8KB
-	setprg16(0x8000, ~1);
-	setprg16(0xC000, ~0);
-	setchr8(0);
-
-	SetReadHandler(0x6000, 0x7FFF, CartBR);
+	// mapper
+	IRQCount = IRQLatch = IRQa = 0;
+	Sync();
+	SetReadHandler(0x6000, 0xFFFF, CartBR);
 	SetWriteHandler(0x6000, 0x7FFF, CartBW);
+	FCEU_CheatAddRAM(0x10, 0x6000, WRAM);
 
-	FCEU_CheatAddRAM(WRAMSIZE >> 10, 0x6000, WRAM);
+	// mapper registers (writes)
+	SetWriteHandler(0x5000, 0x5007, RainbowWrite);
+	SetWriteHandler(0x5400, 0x5407, RainbowWrite);
+	SetWriteHandler(0x5806, 0x5807, RainbowWrite);
+	SetWriteHandler(0x5C03, 0x5C05, RainbowWrite);
 
-	SetWriteHandler(0x5000, 0x5000, RAINBOWWrite);
-	SetReadHandler(0x5000, 0x5000, RAINBOWRead);
-	SetWriteHandler(0x5001, 0x5001, RAINBOWWriteFlags);
-	SetReadHandler(0x5001, 0x5001, RAINBOWReadFlags);
+	// audio expansion registers (writes)
+	SetWriteHandler(0x5800, 0x5805, RainbowSW);
+	SetWriteHandler(0x5C00, 0x5C02, RainbowSW);
+	
+	// mapper registers (reads)
+	SetReadHandler(0x5000, 0x5C07, RainbowRead);
 
-	SetReadHandler(0x8000, 0xFFFF, RAINBOWReadFlash);
-	SetWriteHandler(0x8000, 0xFFFF, RAINBOWWriteFlash);
+	// self-flashing
+	flash_mode[prg_chip] = 0;
+	flash_mode[chr_chip] = 0;
+	flash_sequence[prg_chip] = 0;
+	flash_sequence[chr_chip] = 0;
+	flash_id[prg_chip] = false;
+	flash_id[chr_chip] = false;
+	SetWriteHandler(0x8000, 0xFFFF, RainbowPrgFlash);
 
+	// ESP firmware
 	esp = new BrokeStudioFirmware;
 	esp_enable = true;
 	irq_enable = true;
-	flash_prg_sequence_counter.reset();
-	flash_prg_write_mode = flash_write_mode_t::WRITE_DISABLED;
-	flash_chr_sequence_counter.reset();
-	flash_chr_write_mode = flash_write_mode_t::WRITE_DISABLED;
 }
 
+static void RainbowClose(void)
+{
+	if (WRAM)
+	{
+		FCEU_gfree(WRAM);
+		WRAM = NULL;
+	}
+
+	if (CHRRAM != NULL)
+		ExtraNTARAM = NULL;
+
+	if (PRG_FLASHROM)
+	{
+		FCEU_gfree(PRG_FLASHROM);
+		PRG_FLASHROM = NULL;
+	}
+
+	if (CHR_FLASHROM)
+	{
+		FCEU_gfree(CHR_FLASHROM);
+		CHR_FLASHROM = NULL;
+	}
+}
+
+static void StateRestore(int version) {
+	Sync();
+}
+
+// audio expansion
+
+static void DoSQV1(void);
+static void DoSQV2(void);
+static void DoSawV(void);
+
+static INLINE void DoSQV(int x) {
+	int32 V;
+	int32 amp = (((vpsg1[x << 2] & 15) << 8) * 6 / 8) >> 4;
+	int32 start, end;
+
+	if ((channels & (x + 1)) == 0)
+	{
+		cvbc[x] = 0;
+		return;
+	}
+
+	start = cvbc[x];
+	end = (SOUNDTS << 16) / soundtsinc;
+	if (end <= start)
+		return;
+	cvbc[x] = end;
+
+	if (vpsg1[(x << 2) | 0x2] & 0x80)
+	{
+		if (vpsg1[x << 2] & 0x80)
+		{
+			for (V = start; V < end; V++)
+				Wave[V >> 4] += amp;
+		}
+		else
+		{
+			int32 thresh = (vpsg1[x << 2] >> 4) & 7;
+			int32 freq = ((vpsg1[(x << 2) | 0x1] | ((vpsg1[(x << 2) | 0x2] & 15) << 8)) + 1) << 17;
+			for (V = start; V < end; V++) {
+				if (dcount[x] > thresh)
+					Wave[V >> 4] += amp;
+				vcount[x] -= nesincsize;
+				while (vcount[x] <= 0) {
+					vcount[x] += freq;
+					dcount[x] = (dcount[x] + 1) & 15;
+				}
+			}
+		}
+	}
+}
+
+static void DoSQV1(void) {
+	DoSQV(0);
+}
+
+static void DoSQV2(void) {
+	DoSQV(1);
+}
+
+static void DoSawV(void) {
+	int V;
+	int32 start, end;
+
+	if ((channels & 0x04) == 0)
+	{
+		cvbc[2] = 0;
+		return;
+	}
+
+	start = cvbc[2];
+	end = (SOUNDTS << 16) / soundtsinc;
+	if (end <= start)
+		return;
+	cvbc[2] = end;
+
+	if (vpsg2[2] & 0x80)
+	{
+		static int32 saw1phaseacc = 0;
+		uint32 freq3;
+		static uint8 b3 = 0;
+		static int32 phaseacc = 0;
+		static uint32 duff = 0;
+
+		freq3 = (vpsg2[1] + ((vpsg2[2] & 15) << 8) + 1);
+
+		for (V = start; V < end; V++) {
+			saw1phaseacc -= nesincsize;
+			if (saw1phaseacc <= 0)
+			{
+				int32 t;
+ rea:
+				t = freq3;
+				t <<= 18;
+				saw1phaseacc += t;
+				phaseacc += vpsg2[0] & 0x3f;
+				b3++;
+				if (b3 == 7)
+				{
+					b3 = 0;
+					phaseacc = 0;
+				}
+				if (saw1phaseacc <= 0)
+					goto rea;
+				duff = (((phaseacc >> 3) & 0x1f) << 4) * 6 / 8;
+			}
+			Wave[V >> 4] += duff;
+		}
+	}
+}
+
+static INLINE void DoSQVHQ(int x) {
+	int32 V;
+	int32 amp = ((vpsg1[x << 2] & 15) << 8) * 6 / 8;
+
+	if ((channels & (x + 1)) == 0)
+	{
+		cvbc[x] = 0;
+		return;
+	}
+
+	if (vpsg1[(x << 2) | 0x2] & 0x80)
+	{
+		if (vpsg1[x << 2] & 0x80)
+		{
+			for (V = cvbc[x]; V < (int)SOUNDTS; V++)
+				WaveHi[V] += amp;
+		}
+		else
+		{
+			int32 thresh = (vpsg1[x << 2] >> 4) & 7;
+			for (V = cvbc[x]; V < (int)SOUNDTS; V++) {
+				if (dcount[x] > thresh)
+					WaveHi[V] += amp;
+				vcount[x]--;
+				if (vcount[x] <= 0)
+				{
+					vcount[x] = (vpsg1[(x << 2) | 0x1] | ((vpsg1[(x << 2) | 0x2] & 15) << 8)) + 1;
+					dcount[x] = (dcount[x] + 1) & 15;
+				}
+			}
+		}
+	}
+	cvbc[x] = SOUNDTS;
+}
+
+static void DoSQV1HQ(void) {
+	DoSQVHQ(0);
+}
+
+static void DoSQV2HQ(void) {
+	DoSQVHQ(1);
+}
+
+static void DoSawVHQ(void) {
+	static uint8 b3 = 0;
+	static int32 phaseacc = 0;
+	int32 V;
+
+	if ((channels & 0x04) == 0)
+	{
+		cvbc[2] = 0;
+		return;
+	}
+
+	if (vpsg2[2] & 0x80)
+	{
+		for (V = cvbc[2]; V < (int)SOUNDTS; V++) {
+			WaveHi[V] += (((phaseacc >> 3) & 0x1f) << 8) * 6 / 8;
+			vcount[2]--;
+			if (vcount[2] <= 0)
+			{
+				vcount[2] = (vpsg2[1] + ((vpsg2[2] & 15) << 8) + 1) << 1;
+				phaseacc += vpsg2[0] & 0x3f;
+				b3++;
+				if (b3 == 7) {
+					b3 = 0;
+					phaseacc = 0;
+				}
+			}
+		}
+	}
+	cvbc[2] = SOUNDTS;
+}
+
+void RainbowSound(int Count) {
+	int x;
+
+	DoSQV1();
+	DoSQV2();
+	DoSawV();
+	for (x = 0; x < 3; x++)
+		cvbc[x] = Count;
+}
+
+void RainbowSoundHQ(void) {
+	DoSQV1HQ();
+	DoSQV2HQ();
+	DoSawVHQ();
+}
+
+void RainbowSyncHQ(int32 ts) {
+	int x;
+	for (x = 0; x < 3; x++) cvbc[x] = ts;
+}
+
+static void RainbowESI(void) {
+	GameExpSound.RChange = RainbowESI;
+	GameExpSound.Fill = RainbowSound;
+	GameExpSound.HiFill = RainbowSoundHQ;
+	GameExpSound.HiSync = RainbowSyncHQ;
+
+	memset(cvbc, 0, sizeof(cvbc));
+	memset(vcount, 0, sizeof(vcount));
+	memset(dcount, 0, sizeof(dcount));
+	if (FSettings.SndRate)
+	{
+		if (FSettings.soundq >= 1)
+		{
+			sfun[0] = DoSQV1HQ;
+			sfun[1] = DoSQV2HQ;
+			sfun[2] = DoSawVHQ;
+		} else {
+			sfun[0] = DoSQV1;
+			sfun[1] = DoSQV2;
+			sfun[2] = DoSawV;
+		}
+	}
+	else
+		memset(sfun, 0, sizeof(sfun));
+	AddExState(&SStateRegs, ~0, 0, 0);
+}
+
+#if 0
+// Let's disable NSF support for now since I don't have an NSF ROM file to test it yet.
+
+// NSF Init
+
+void NSFRainbow_Init(void) {
+	RainbowESI();
+	SetWriteHandler(0x8000, 0xbfff, RainbowSW);
+}
+#endif
+
+// mapper init
+
 void RAINBOW_Init(CartInfo *info) {
-	UDBG("RAINBOW init\n");
-	info->Power = RAINBOWPower;
-	info->Close = LatchClose;
+	info->Power = RainbowPower;
+	info->Close = RainbowClose;
 
-	// Initialize flash PRG
-	flash_prg = (uint8*)FCEU_gmalloc(flash_prg_size);
-	flash_prg_written = (bool*)FCEU_gmalloc(flash_prg_size * sizeof(bool));
-	::memset(flash_prg_written, 0, flash_prg_size * sizeof(bool));
-	//TODO AddExState
-	//TODO info->SaveGame[] = flash ; info->SaveGame[] = flash_written
+	GameHBIRQHook = Rainbowhb;
+	RainbowESI();
+	GameStateRestore = StateRestore;
 
-	// Initialize flash CHR
-	flash_chr = (uint8*)FCEU_gmalloc(flash_chr_size);
-	flash_chr_written = (bool*)FCEU_gmalloc(flash_chr_size * sizeof(bool));
-	::memset(flash_chr_written, 0, flash_chr_size * sizeof(bool));
-	//TODO AddExState
-	//TODO info->SaveGame[] = flash ; info->SaveGame[] = flash_written
+	// WRAM
+	if (info->wram_size != 0)
+	{
+		WRAM = (uint8*)FCEU_gmalloc(WRAMSIZE);
+		SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, 1);
+		AddExState(WRAM, WRAMSIZE, 0, "WRAM");
+	}
 
-	//TODO is wram really necessary?
-	WRAMSIZE = 8192;
-	WRAM = (uint8*)FCEU_gmalloc(WRAMSIZE);
-	SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, 1);
-	if (info->battery) {
+	if (info->battery)
+	{
 		info->SaveGame[0] = WRAM;
 		info->SaveGameLen[0] = WRAMSIZE;
 	}
-	AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 
-	// Set a hook on hblank to be able periodically check if we have to send an interupt
-	MapIRQHook = RAINBOWMapIrq;
+	// PRG FLASH ROM
+	info->SaveGame[1] = PRG_FLASHROM;
+	info->SaveGameLen[1] = PRG_FLASHROMSIZE;
+	PRG_FLASHROM = (uint8*)FCEU_gmalloc(PRG_FLASHROMSIZE);
+	AddExState(PRG_FLASHROM, PRG_FLASHROMSIZE, 0, "PFROM");
 
-	FFCEUX_PPURead = RAINBOWPPURead;
-	FFCEUX_PPUWrite = RAINBOWPPUWrite;
+	// copy PRG ROM into PRG_FLASHROM, use it instead of PRG ROM
+	const uint32 PRGSIZE = ROM_size * 16 * 1024;
+	for (uint32 w = 0, r = 0; w < PRG_FLASHROMSIZE; ++w)
+	{
+		PRG_FLASHROM[w] = ROM[r];
+		++r;
+		if (r >= PRGSIZE)
+			r = 0;
+	}
+	SetupCartPRGMapping(0x11, PRG_FLASHROM, PRG_FLASHROMSIZE, 0);
+
+	// CHR-RAM or FLASH ROM
+	if (info->vram_size != 0)
+	{
+		CHRRAM = (uint8*)FCEU_gmalloc(CHRRAMSIZE);
+		SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, 1);
+		AddExState(CHRRAM, CHRRAMSIZE, 0, "CRAM");
+		ExtraNTARAM = CHRRAM + 30 * 1024;
+		AddExState(ExtraNTARAM, 2048, 0, "EXNR");
+	}
+	else if (info->vram_size == 0)
+	{
+		info->SaveGame[2] = CHR_FLASHROM;
+		info->SaveGameLen[2] = CHR_FLASHROMSIZE;
+		CHR_FLASHROM = (uint8*)FCEU_gmalloc(CHR_FLASHROMSIZE);
+		AddExState(CHR_FLASHROM, CHR_FLASHROMSIZE, 0, "CFROM");
+
+		// copy CHR ROM into CHR_FLASHROM, use it instead of CHR ROM
+		const uint32 CHRSIZE = VROM_size * 8 * 1024;
+		for (uint32 w = 0, r = 0; w < CHR_FLASHROMSIZE; ++w)
+		{
+			CHR_FLASHROM[w] = VROM[r];
+			++r;
+			if (r >= CHRSIZE)
+				r = 0;
+		}
+		SetupCartCHRMapping(0x10, CHR_FLASHROM, CHR_FLASHROMSIZE, 0);
+
+		FFCEUX_PPUWrite = RainbowPPUWrite;
+	}
+
+	AddExState(&FlashRegs, ~0, 0, 0);
+	AddExState(&RainbowStateRegs, ~0, 0, 0);
+
+	// set a hook on hblank to be able periodically check if we have to send an interupt
+	MapIRQHook = RainbowEspMapIrq;
 }

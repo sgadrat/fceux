@@ -723,8 +723,9 @@ static BMAPPINGLocal bmap[] = {
 	{"HP10xx/H20xx Boards",	260, BMCHPxx_Init},
 	{"810544-CA-1",		    261, BMC810544CA1_Init},
 
-	{"RAINBOW",            3840, RAINBOW_Init},
+	{"RAINBOW NROM",       3840, RAINBOW_NROM_Init},
 	{"RAINBOW512",         3870, RAINBOW512_Init},
+	{"RAINBOW",            3871, RAINBOW_Init},
 	{"NESNET",             3841, NESNET_Init},
 
 	{"",					0, NULL}
