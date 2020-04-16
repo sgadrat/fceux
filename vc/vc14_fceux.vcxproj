@@ -482,6 +482,7 @@
     <ClCompile Include="..\src\boards\nesnet_esp.cpp" />
     <ClCompile Include="..\src\boards\onebus.cpp" />
     <ClCompile Include="..\src\boards\pec-586.cpp" />
+    <ClCompile Include="..\src\boards\pping.c" />
     <ClCompile Include="..\src\boards\rainbow512.cpp" />
     <ClCompile Include="..\src\boards\rainbow_esp.cpp" />
     <ClCompile Include="..\src\boards\rainbow.cpp" />

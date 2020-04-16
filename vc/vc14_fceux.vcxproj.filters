@@ -1102,6 +1102,9 @@
     <ClCompile Include="..\src\boards\mongoose.c">
       <Filter>boards</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\boards\pping.c">
+      <Filter>boards</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\boards\rainbow512.cpp">
       <Filter>boards</Filter>
     </ClCompile>

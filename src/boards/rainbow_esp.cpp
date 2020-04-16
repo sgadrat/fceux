@@ -1,13 +1,16 @@
 #include "rainbow_esp.h"
 
 #include "../fceu.h"
+#include "../utils/crc32.h"
 
+#include "pping.h"
+
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <regex>
 #include <map>
 #include <sstream>
-#include "../utils/crc32.h"
 
 #if defined(_WIN32) || defined(WIN32)
 
@@ -119,6 +122,9 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 
 	// Load file list from save file (if any)
 	this->loadFiles();
+
+	// Mark ping result as useless
+	this->ping_ready = false;
 }
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
@@ -153,6 +159,7 @@ uint8 BrokeStudioFirmware::tx() {
 
 	// Refresh buffer from network
 	this->receiveDataFromServer();
+	this->receivePingResult();
 
 	// Fill buffer with the next message (if needed)
 	if (this->tx_buffer.empty() && !this->tx_messages.empty()) {
@@ -177,6 +184,7 @@ void BrokeStudioFirmware::setGpio15(bool /*v*/) {
 
 bool BrokeStudioFirmware::getGpio15() {
 	this->receiveDataFromServer();
+	this->receivePingResult();
 	return !(this->tx_buffer.empty() && this->tx_messages.empty());
 }
 
@@ -304,8 +312,22 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		}
 		case n2e_cmds_t::GET_SERVER_PING:
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_PING\n");
-			//TODO
-			UDBG("RAINBOW BrokeStudioFirmware not implemented\n");
+			if (!this->ping_thread.joinable()) {
+				if (this->server_settings_address.empty()) {
+					this->tx_messages.push_back({
+						1,
+						static_cast<uint8>(e2n_cmds_t::SERVER_PING)
+					});
+				}else if (message_size >= 1) {
+					assert(!this->ping_thread.joinable());
+					this->ping_ready = false;
+					uint8 n = (message_size == 1 ? 0 : this->rx_buffer.at(2));
+					if (n == 0) {
+						n = 4;
+					}
+					this->ping_thread = std::thread(&BrokeStudioFirmware::pingRequest, this, n);
+				}
+			}
 			break;
 		case n2e_cmds_t::SET_SERVER_PROTOCOL: {
 			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_PROTOCOL\n");
@@ -902,6 +924,74 @@ void BrokeStudioFirmware::openConnection() {
 		bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 		bind(this->udp_socket, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(sockaddr));
 	}
+}
+
+void BrokeStudioFirmware::pingRequest(uint8 n) {
+	using std::chrono::time_point;
+	using std::chrono::steady_clock;
+	using std::chrono::duration_cast;
+	using std::chrono::milliseconds;
+
+	uint8 min = 255;
+	uint8 max = 0;
+	uint32 total_ms = 0;
+	uint8 lost = 0;
+
+	pping_s* pping = pping_init(this->server_settings_address.c_str());
+	if (pping == NULL) {
+		lost = n;
+	}else {
+		for (uint8 i = 0; i < n; ++i) {
+			time_point<steady_clock> begin = steady_clock::now();
+			int r = pping_ping(pping);
+			time_point<steady_clock> end = steady_clock::now();
+
+			if (r != 0) {
+				UDBG("RAINBOW BrokeStudioFirmware ping lost packet\n");
+				++lost;
+			}else {
+				uint32 const round_trip_time_ms = duration_cast<milliseconds>(end - begin).count();
+				uint8 const rtt = (round_trip_time_ms + 2) / 4;
+				UDBG("RAINBOW BrokeStudioFirmware ping %d ms\n", round_trip_time_ms);
+				min = std::min(min, rtt);
+				max = std::max(max, rtt);
+				total_ms += round_trip_time_ms;
+			}
+
+			if (i < n - 1) {
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+			}
+		}
+		pping_free(pping);
+	}
+
+	this->ping_min = min;
+	if (lost < n) {
+		this->ping_avg = ((total_ms / (n - lost)) + 2) / 4;
+	}
+	this->ping_max = max;
+	this->ping_lost = lost;
+	this->ping_ready = true;
+	UDBG("RAINBOW BrokeStudioFirmware ping stored: %d/%d/%d/%d (min/max/avg/lost)\n", this->ping_min, this ->ping_max, this->ping_avg, this->ping_lost);
+}
+
+void BrokeStudioFirmware::receivePingResult() {
+	if (!this->ping_ready) {
+		return;
+	}
+	assert(this->ping_thread.joinable());
+
+	this->ping_thread.join();
+	this->ping_ready = false;
+
+	this->tx_messages.push_back({
+		5,
+		static_cast<uint8>(e2n_cmds_t::SERVER_PING),
+		this->ping_min,
+		this->ping_max,
+		this->ping_avg,
+		this->ping_lost
+	});
 }
 
 void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {

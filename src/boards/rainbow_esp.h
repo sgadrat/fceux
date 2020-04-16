@@ -81,6 +81,7 @@ private:
 
 		WIFI_STATUS,
 		SERVER_STATUS,
+		SERVER_PING,
 		HOST_SETTINGS,
 
 		RND_BYTE,
@@ -111,6 +112,9 @@ private:
 	void closeConnection();
 	void openConnection();
 
+	void pingRequest(uint8 n);
+	void receivePingResult();
+
 	static std::string pathStrFromIndex(uint8 path, uint8 file);
 	static std::pair<uint8, uint8> pathIndexFromStr(std::string const&);
 
@@ -133,6 +137,13 @@ private:
 
 	easywsclient::WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;
+
+	uint8 ping_min = 0;
+	uint8 ping_avg = 0;
+	uint8 ping_max = 0;
+	uint8 ping_lost = 0;
+	std::atomic<bool> ping_ready;
+	std::thread ping_thread;
 
 	int udp_socket = -1;
 	sockaddr_in server_addr;

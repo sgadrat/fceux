@@ -38,10 +38,11 @@ FROMESP_MSG_FILE_ID = 6               ; Returns a free file ID (FILE_GET_FREE_ID
 FROMESP_MSG_FILE_INFO = 7             ; Returns file info (size + CRC32) (FILE_GET_INFO)
 FROMESP_MSG_WIFI_STATUS = 8           ; Returns WiFi connection status
 FROMESP_MSG_SERVER_STATUS = 9         ; Returns server connection status
-FROMESP_MSG_HOST_SETTINGS = 10        ; Returns server settings (host name + port)
-FROMESP_MSG_RND_BYTE = 11             ; Returns random byte value
-FROMESP_MSG_RND_WORD = 12             ; Returns random word value
-FROMESP_MSG_MESSAGE_FROM_SERVER = 13  ; Message from server
+FROMESP_MSG_SERVER_PING = 10          ; Returns min, max and average round-trip time and number of lost packets
+FROMESP_MSG_HOST_SETTINGS = 11        ; Returns server settings (host name + port)
+FROMESP_MSG_RND_BYTE = 12             ; Returns random byte value
+FROMESP_MSG_RND_WORD = 13             ; Returns random word value
+FROMESP_MSG_MESSAGE_FROM_SERVER = 14  ; Message from server
 
 ESP_FILE_PATH_SAVE = 0
 ESP_FILE_PATH_ROMS = 1
