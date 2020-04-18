@@ -213,8 +213,11 @@ static void UNROM512LatchClose(void) {
 		FCEU_gfree(flash_write_count);
 	if(flashdata)
 		FCEU_gfree(flashdata);
+	if (esp)
+		delete esp;
 	flash_write_count = NULL;
 	flashdata = NULL;
+	esp = NULL;
 }
 
 

@@ -57,16 +57,18 @@ sample_files_screen_tick:
 		; Reset drawn nametable buffers
 		jsr reset_nt_buffers
 
-		; When player presses a button, modify data in PRG
+		; Display files
+		jsr refresh_files_status
+		jsr show_files
+
+		; When player presses a button, modify data in files
 		lda controller_a_last_frame_btns
 		bne end
 
 		lda controller_a_btns
 		beq end
 
-		jsr refresh_files_status
-		jsr show_files
-		jsr write_file
+			jsr write_file
 
 		end:
 		rts
@@ -119,7 +121,7 @@ sample_files_screen_tick:
 	.(
 		cur_file = tmpfield16
 
-		lda 0
+		lda #0
 		sta cur_file
 
 		show_one_file:
@@ -127,7 +129,11 @@ sample_files_screen_tick:
 			ldx cur_file
 			lda sample_files_file_exists, x
 			bne file_exists
-			jmp next_file
+				;lda #0 ; Already ensured by BNE
+				pha
+				pha
+				pha
+				jmp show_file
 			file_exists:
 
 			; Select file
@@ -161,7 +167,15 @@ sample_files_screen_tick:
 			lda $5000 ; Message type
 			nop
 			lda $5000 ; Data length
+			nop
+			lda $5000 ; File contents
+			pha
+			lda $5000 ; File contents
+			pha
+			lda $5000 ; File contents
+			pha
 
+			show_file:
 			lda #$21
 			sta tmpfield1
 			lda #$2c
@@ -192,11 +206,11 @@ sample_files_screen_tick:
 			sta nametable_buffers+2, x
 			lda #$03
 			sta nametable_buffers+3, x
-			lda $5000
+			pla
 			sta nametable_buffers+4, x
-			lda $5000
+			pla
 			sta nametable_buffers+5, x
-			lda $5000
+			pla
 			sta nametable_buffers+6, x
 			lda #$0
 			sta nametable_buffers+7, x

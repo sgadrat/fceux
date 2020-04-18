@@ -1088,8 +1088,10 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 				return;
 			}
 
+			UDBG("RAINBOW Web(self=%p) deleting file %d/%d\n", self, path_index, file_index);
 			self->file_exists[path_index][file_index] = false;
 			self->files[path_index][file_index].clear();
+			self->saveFiles();
 			send_message(200, "{\"success\":\"true\"}\n", "application/json");
 
 		}else if (std::string("/api/file/rename") == std::string(hm->uri.p, hm->uri.len)) {
@@ -1122,6 +1124,7 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			self->file_exists[new_path_index][new_file_index] = self->file_exists[path_index][file_index];
 			self->file_exists[path_index][file_index] = false;
 			self->files[path_index][file_index].clear();
+			self->saveFiles();
 
 			send_message(200, "{\"success\":\"true\"}\n", "application/json");
 		}else if (std::string("/api/file/download") == std::string(hm->uri.p, hm->uri.len)) {
@@ -1223,8 +1226,9 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 
 			self->files[path_index][file_index] = std::vector<uint8>(file_data->second.begin(), file_data->second.end());
 			self->file_exists[path_index][file_index] = true;
+			self->saveFiles();
 
-			UDBG("Upload sucessful\n");
+			UDBG("RAINBOW Web(self=%p) sucessfuly uploaded file %d/%d\n", self, path_index, file_index);
 
 			// Return something webbrowser friendly
 			send_message(200, "{\"success\":\"true\"}\n", "application/json");
