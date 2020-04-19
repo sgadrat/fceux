@@ -407,6 +407,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case n2e_cmds_t::FILE_CLOSE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_CLOSE\n");
 			this->working_file = NO_WORKING_FILE;
+			this->saveFiles();
 			break;
 		case n2e_cmds_t::FILE_EXISTS:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_EXISTS\n");
@@ -417,7 +418,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					this->tx_messages.push_back({
 						2,
 						static_cast<uint8>(e2n_cmds_t::FILE_EXISTS),
-						this->file_exists[path][file] ? 1 : 0
+						static_cast<uint8>(this->file_exists[path][file] ? 1 : 0)
 					});
 				}
 			}
@@ -484,15 +485,15 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case n2e_cmds_t::FILE_WRITE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_WRITE\n");
-			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
-				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
-				this->file_offset += message_size - 2;
+			if (message_size >= 3 && this->working_file != NO_WORKING_FILE) {
+				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 2, this->rx_buffer.begin() + message_size + 1);
+				this->file_offset += message_size - 1;
 			}
 			break;
 		case n2e_cmds_t::FILE_APPEND:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_APPEND\n");
-			if (message_size >= 3 && this->rx_buffer[2] == message_size - 2 && this->working_file != NO_WORKING_FILE) {
-				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 3, this->rx_buffer.begin() + message_size + 1);
+			if (message_size >= 3 && this->working_file != NO_WORKING_FILE) {
+				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 2, this->rx_buffer.begin() + message_size + 1);
 			}
 			break;
 		case n2e_cmds_t::FILE_COUNT:
@@ -661,7 +662,6 @@ void BrokeStudioFirmware::writeFile(uint8 path, uint8 file, uint32 offset, I dat
 		++data_begin;
 	}
 	this->file_exists[path][file] = true;
-	this->saveFiles();
 }
 
 uint8 BrokeStudioFirmware::getFreeFileId(uint8 path) const {
@@ -1281,41 +1281,50 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 				if (uri.empty()) {
 					uri = "index.html";
 				}
-				std::string file_path(std::string(www_root) + uri);
+
+				// Try to serve requested file, if not found, then try to serve index.html
+				std::string file_path = "";
+				try {
+					file_path = std::string(www_root) + uri;
+					std::vector<uint8> contents = readHostFile(file_path);
+				}catch (std::runtime_error const& e) {
+					try {
+						file_path = std::string(www_root) + "index.html";
+						std::vector<uint8> contents = readHostFile(file_path);
+					}catch (std::runtime_error const& e) {
+						std::string message(
+							"<html><body><h1>404</h1><p>" +
+							file_path +
+							"</p><p>" +
+							e.what() +
+							"</p></body></html>"
+						);
+						send_message(
+							404,
+							message.c_str(),
+							"text/html"
+						);
+					}
+				}
 
 				// Serve file
-				try {
-					std::vector<uint8> contents = readHostFile(file_path);
-					// Basic / naive mime type handler
-					std::string ext = file_path.substr(file_path.find_last_of(".") + 1);
-					std::string mime_type = "";
-					if (ext == "html") mime_type = "text/html";
-					else if (ext == "css") mime_type = "text/css";
-					else if (ext == "js") mime_type = "application/javascript";
-					else mime_type = "application/octet-stream";
-					std::string content_type(
-						"Content-Type: " + mime_type + "\r\n" +
-						"Connection: close\r\n"
-					);
-					mg_send_response_line(
-						nc, 200, content_type.c_str()
-					);
-					mg_send(nc, contents.data(), contents.size());
-					nc->flags |= MG_F_SEND_AND_CLOSE;
-				}catch(std::runtime_error const& e) {
-					std::string message(
-						"<html><body><h1>404</h1><p>" +
-						file_path +
-						"</p><p>" +
-						e.what() +
-						"</p></body></html>"
-					);
-					send_message(
-						404,
-						message.c_str(),
-						"text/html"
-					);
-				}
+				std::vector<uint8> contents = readHostFile(file_path);
+				// Basic / naive mime type handler
+				std::string ext = file_path.substr(file_path.find_last_of(".") + 1);
+				std::string mime_type = "";
+				if (ext == "html") mime_type = "text/html";
+				else if (ext == "css") mime_type = "text/css";
+				else if (ext == "js") mime_type = "application/javascript";
+				else mime_type = "application/octet-stream";
+				std::string content_type(
+					"Content-Type: " + mime_type + "\r\n" +
+					"Connection: close\r\n"
+				);
+				mg_send_response_line(
+					nc, 200, content_type.c_str()
+				);
+				mg_send(nc, contents.data(), contents.size());
+				nc->flags |= MG_F_SEND_AND_CLOSE;
 			}
 		}
 	}
