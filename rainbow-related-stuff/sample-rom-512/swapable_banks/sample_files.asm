@@ -240,12 +240,10 @@ sample_files_screen_tick:
 		sta $5000
 
 		; Write data in file
-		lda #5
+		lda #4
 		sta $5000 ; Message length
 		lda #TOESP_MSG_FILE_WRITE
 		sta $5000 ; Command
-		lda #3
-		sta $5000 ; Data length
 		lda #$1d
 		sta $5000 ; Data
 		sta $5000 ;
