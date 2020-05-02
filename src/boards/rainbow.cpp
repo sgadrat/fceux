@@ -40,6 +40,9 @@
 #define MIRR_ONE_SCREEN     0b10 // VRAM [+ CHR-RAM]
 #define MIRR_FOUR_SCREEN    0b11 // CHR-RAM
 
+#define CHR_TYPE_ROM        0b0  // CHR-ROM
+#define CHR_TYPE_RAM        0b1  // CHR-RAM
+
 #define CHR_MODE_1K         0b00 // 1K mode
 #define CHR_MODE_2K         0b01 // 2K mode
 #define CHR_MODE_4K         0b10 // 4K mode
@@ -49,12 +52,17 @@
 #define PRG_MODE_8K_8K_8K   0b1 // 8K + 8K + 8K fixed
 
 static uint8 prg[3], chr[8], wram_bank;
-static uint8 prg_mode, chr_mode;
+static uint8 prg_mode, chr_mode_chip, chr_mode;
 static uint8 mirr_mode, nt_set;
-static uint8 mul[2];
 
 static uint8 *WRAM = NULL;
 const uint32 WRAMSIZE = 32 * 1024;
+
+static uint8 *DUMMY_CHRRAM = NULL;
+const uint32 DUMMY_CHRRAMSIZE = 4 * 1024;
+
+static uint8 *DUMMY_CHRROM = NULL;
+const uint32 DUMMY_CHRROMSIZE = 512 * 1024;
 
 static uint8 *CHRRAM = NULL;
 const uint32 CHRRAMSIZE = 32 * 1024;
@@ -69,10 +77,10 @@ static uint8 flash_sequence[2];
 static uint8 flash_id[2];
 
 static uint8 *PRG_FLASHROM = NULL;
-const uint32 PRG_FLASHROMSIZE = 1024 * 512;
+const uint32 PRG_FLASHROMSIZE = 512 * 1024;
 
 static uint8 *CHR_FLASHROM = NULL;
-const uint32 CHR_FLASHROMSIZE = 1024 * 512;
+const uint32 CHR_FLASHROMSIZE = 512 * 1024;
 
 static SFORMAT FlashRegs[] =
 {
@@ -99,7 +107,6 @@ static uint8 vpsg2[4];
 static int32 cvbc[3];
 static int32 vcount[3];
 static int32 dcount[2];
-static uint8 channels;
 
 static SFORMAT SStateRegs[] =
 {
@@ -148,6 +155,7 @@ static void Sync(void) {
 	static uint8 *address;
 	uint32 start;
 	uint32 offset;
+	uint8 cart_chr_map;
 
 	if (prg_mode == PRG_MODE_16K_8K)
 	{
@@ -182,7 +190,7 @@ static void Sync(void) {
 		else
 			setprg8r(0x11, 0xc000, prg[2] & 0x3f);
 	}
-	
+
 	setprg8r(0x11, 0xe000, ~0);
 
 	if (wram_bank & 0x80)
@@ -190,28 +198,29 @@ static void Sync(void) {
 	else
 		setprg8r(0x11, 0x6000, wram_bank & 0x7f);
 
+	cart_chr_map = chr_mode_chip + 0x10;
 	switch (chr_mode)
 	{
 	case CHR_MODE_1K:
 		for (uint8 i = 0; i < 8; i++) {
-			if ((i < 4) | (CHRRAM != NULL))
-				setchr1r(0x10, i << 10, chr[i]);
+			if ((i < 4) | (chr_mode_chip == CHR_TYPE_RAM))
+				setchr1r(cart_chr_map, i << 10, chr[i]);
 			else
-				setchr1r(0x10, i << 10, chr[i] + 256);
+				setchr1r(cart_chr_map, i << 10, chr[i] + 256);
 		}
 		break;
 	case CHR_MODE_2K:
-		setchr2r(0x10, 0x0000, chr[0]);
-		setchr2r(0x10, 0x0800, chr[1]);
-		setchr2r(0x10, 0x1000, chr[2]);
-		setchr2r(0x10, 0x1800, chr[3]);
+		setchr2r(cart_chr_map, 0x0000, chr[0]);
+		setchr2r(cart_chr_map, 0x0800, chr[1]);
+		setchr2r(cart_chr_map, 0x1000, chr[2]);
+		setchr2r(cart_chr_map, 0x1800, chr[3]);
 		break;
 	case CHR_MODE_4K:
-		setchr4r(0x10, 0x0000, chr[0]);
-		setchr4r(0x10, 0x1000, chr[1]);
+		setchr4r(cart_chr_map, 0x0000, chr[0]);
+		setchr4r(cart_chr_map, 0x1000, chr[1]);
 		break;
 	case CHR_MODE_8K:
-		setchr8r(0x10, chr[0]);
+		setchr8r(cart_chr_map, chr[0]);
 		break;
 	}
 
@@ -229,26 +238,33 @@ static void Sync(void) {
 		{
 		case 0: address = NTARAM; break;
 		case 1: address = NTARAM + 0x400; break;
-		case 2: address = (CHRRAM != NULL) ? ExtraNTARAM : NTARAM; break;
-		case 3: address = (CHRRAM != NULL) ? ExtraNTARAM + 0x400 : NTARAM + 0x400; break;
+		case 2: address = ExtraNTARAM; break;
+		case 3: address = ExtraNTARAM + 0x400; break;
 		}
 		vnapage[0] = vnapage[1] = vnapage[2] = vnapage[3] = address;
 		PPUNTARAM = 0x0F;
 		break;
 	case MIRR_FOUR_SCREEN:
+		FCEUPPU_LineUpdate();
 		if (CHRRAM != NULL)
 		{
-			FCEUPPU_LineUpdate();
 			for (int i = 0; i < 4; i++)
 			{
-				start = (28 - (nt_set & 0x01) * 4) * 1024;
+				uint8 t = nt_set ^ 0x03;
+				start = (16 + t * 4) * 1024;
 				offset = i * 0x400;
 				vnapage[i] = CHRRAM + start + offset;
 			}
 			PPUNTARAM = 0x0F;
 		}
 		else
-			setmirror(MI_V);
+		{
+			for (int i = 0; i < 4; i++)
+			{
+				offset = i * 0x400;
+				vnapage[i] = DUMMY_CHRRAM + offset;
+			}
+		}
 	}
 }
 
@@ -261,7 +277,7 @@ static DECLFW(RainbowSW) {
 	}
 	else if (A >= 0x5803 && A <= 0x5805)
 	{
-		vpsg1[4 | ((A - 3 ) & 3)] = V;
+		vpsg1[4 | ((A - 3) & 3)] = V;
 		if (sfun[1])
 			sfun[1]();
 	}
@@ -286,13 +302,9 @@ static DECLFR(RainbowRead) {
 		return esp_rts_flag | esp_enable_flag | irq_enable_flag;
 	}
 	case 0x5006:
-		return (nt_set << 6) | (mirr_mode << 4) | (chr_mode << 2) | prg_mode;
-	case 0x5806:
-		return((mul[0] * mul[1]) >> 8);
-	case 0x5807:
-		return(mul[0] * mul[1]);
+		return (nt_set << 6) | (mirr_mode << 4) | (chr_mode_chip << 3) | (chr_mode << 1) | prg_mode;
 	default:
-		return(X.DB);
+		return 0;
 	}
 }
 
@@ -308,14 +320,14 @@ static DECLFW(RainbowWrite) {
 	case 0x5003: prg[1] = V & 0x3f; Sync(); break;
 	case 0x5004: prg[2] = V & 0x3f; Sync(); break;
 	case 0x5005: wram_bank = V; Sync(); break;
-	case 0x5006: 
+	case 0x5006:
 		prg_mode = V & 0x01;
-		chr_mode = (V & 0x0C) >> 2;
+		chr_mode_chip = (V & 0x08) >> 3;
+		chr_mode = (V & 0x06) >> 1;
 		mirr_mode = (V & 0x30) >> 4;
 		nt_set = (V & 0xC0) >> 6;
 		Sync();
 		break;
-	case 0x5007: channels = V & 0x07; break;
 
 	case 0x5400: chr[0] = V; Sync(); break;
 	case 0x5401: chr[1] = V; Sync(); break;
@@ -326,19 +338,14 @@ static DECLFW(RainbowWrite) {
 	case 0x5406: chr[6] = V; Sync(); break;
 	case 0x5407: chr[7] = V; Sync(); break;
 
-	case 0x5806: mul[0] = V; break;
-	case 0x5807: mul[1] = V; break;
-
-	case 0x5C03: IRQLatch = V; break;
-	case 0x5C04: IRQReload = 1; break;
-	case 0x5C05:
-		if (V == 0)
-		{
-			X6502_IRQEnd(FCEU_IQEXT);
-			IRQa = 0;
-		}
-		else
-			IRQa = 1;
+	case 0x5C04: IRQLatch = V; break;
+	case 0x5C05: IRQReload = 1; break;
+	case 0x5C06:
+		X6502_IRQEnd(FCEU_IQEXT);
+		IRQa = 0;
+		break;
+	case 0x5C07:
+		IRQa = 1;
 		break;
 	}
 }
@@ -362,6 +369,24 @@ static void ClockRainbowCounter(void) {
 
 static void Rainbowhb() {
 	ClockRainbowCounter();
+}
+
+uint8 FASTCALL RainbowPPURead(uint32 A) {
+	// if CHR-RAM, check if CHR-RAM exists, if not return data bus cache
+	if (chr_mode_chip == CHR_TYPE_RAM && CHRRAM == NULL)
+	{
+		if (PPU_hook) PPU_hook(A);
+		return X.DB;
+	}
+
+	// if CHR-ROM, check if CHR-ROM exists, if not return data bus cache
+	if (chr_mode_chip == CHR_TYPE_ROM && CHR_FLASHROM == NULL)
+	{
+		if (PPU_hook) PPU_hook(A);
+		return X.DB;
+	}
+
+	return FFCEUX_PPURead_Default(A);
 }
 
 uint8 RainbowFlashID(uint32 A) {
@@ -391,13 +416,13 @@ void RainbowFlashIDEnter(CHIP_TYPE chip)
 {
 	switch (chip)
 	{
-	case prg_chip:
+	case CHIP_TYPE::prg_chip:
 		if (flash_id[chip])
 			return;
 		flash_id[chip] = 1;
 		SetReadHandler(0x8000, 0xFFFF, RainbowFlashPrgID);
 		break;
-	case chr_chip:
+	case CHIP_TYPE::chr_chip:
 		if (flash_id[chip])
 			return;
 		flash_id[chip] = 1;
@@ -412,17 +437,17 @@ void RainbowFlashIDExit(CHIP_TYPE chip)
 {
 	switch (chip)
 	{
-	case prg_chip:
+	case CHIP_TYPE::prg_chip:
 		if (!flash_id[chip])
 			return;
 		flash_id[chip] = 0;
 		SetReadHandler(0x8000, 0xFFFF, CartBR);
 		break;
-	case chr_chip:
+	case CHIP_TYPE::chr_chip:
 		if (!flash_id[chip])
 			return;
 		flash_id[chip] = 0;
-		FFCEUX_PPURead = FFCEUX_PPURead_Default;
+		FFCEUX_PPURead = RainbowPPURead;
 		break;
 	default:
 		return;
@@ -587,30 +612,41 @@ static DECLFW(RainbowPrgFlash) {
 }
 
 static void RainbowPPUWrite(uint32 A, uint8 V) {
-	uint32 flash_addr = A;
-	if (A < 0x2000)
+
+	// if CHR-RAM, check if CHR-RAM exists, if not return
+	if (chr_mode_chip == CHR_TYPE_RAM && CHRRAM == NULL)
+		return;
+
+	// if CHR-ROM, check if CHR-ROM exists, if not return
+	if (chr_mode_chip == CHR_TYPE_ROM && CHR_FLASHROM == NULL)
+		return;
+	else
 	{
-		switch (chr_mode)
+		uint32 flash_addr = A;
+		if (A < 0x2000)
 		{
-		case CHR_MODE_1K:
-			flash_addr &= 0x3FF;
-			flash_addr |= chr[A >> 10] << 10;
-			break;
-		case CHR_MODE_2K:
-			flash_addr &= 0x7FF;
-			flash_addr |= chr[A >> 11] << 11;
-			break;
-		case CHR_MODE_4K:
-			flash_addr &= 0xFFF;
-			flash_addr |= chr[A >> 12] << 12;
-			break;
-		case CHR_MODE_8K:
-		default:
-			flash_addr &= 0x1FFF;
-			flash_addr |= chr[0] << 13;
-			break;
+			switch (chr_mode)
+			{
+			case CHR_MODE_1K:
+				flash_addr &= 0x3FF;
+				flash_addr |= chr[A >> 10] << 10;
+				break;
+			case CHR_MODE_2K:
+				flash_addr &= 0x7FF;
+				flash_addr |= chr[A >> 11] << 11;
+				break;
+			case CHR_MODE_4K:
+				flash_addr &= 0xFFF;
+				flash_addr |= chr[A >> 12] << 12;
+				break;
+			case CHR_MODE_8K:
+			default:
+				flash_addr &= 0x1FFF;
+				flash_addr |= chr[0] << 13;
+				break;
+			}
+			RainbowFlash(CHIP_TYPE::chr_chip, flash_addr, V);
 		}
-		RainbowFlash(CHIP_TYPE::chr_chip, flash_addr, V);
 	}
 	FFCEUX_PPUWrite_Default(A, V);
 }
@@ -628,23 +664,36 @@ static void RainbowPower(void) {
 	SetWriteHandler(0x5000, 0x5007, RainbowWrite);
 	SetWriteHandler(0x5400, 0x5407, RainbowWrite);
 	SetWriteHandler(0x5806, 0x5807, RainbowWrite);
-	SetWriteHandler(0x5C03, 0x5C05, RainbowWrite);
+	SetWriteHandler(0x5C04, 0x5C07, RainbowWrite);
 
 	// audio expansion registers (writes)
 	SetWriteHandler(0x5800, 0x5805, RainbowSW);
 	SetWriteHandler(0x5C00, 0x5C02, RainbowSW);
-	
+
 	// mapper registers (reads)
 	SetReadHandler(0x5000, 0x5C07, RainbowRead);
 
 	// self-flashing
-	flash_mode[prg_chip] = 0;
-	flash_mode[chr_chip] = 0;
-	flash_sequence[prg_chip] = 0;
-	flash_sequence[chr_chip] = 0;
-	flash_id[prg_chip] = false;
-	flash_id[chr_chip] = false;
+	flash_mode[CHIP_TYPE::prg_chip] = 0;
+	flash_mode[CHIP_TYPE::chr_chip] = 0;
+	flash_sequence[CHIP_TYPE::prg_chip] = 0;
+	flash_sequence[CHIP_TYPE::chr_chip] = 0;
+	flash_id[CHIP_TYPE::prg_chip] = false;
+	flash_id[CHIP_TYPE::chr_chip] = false;
 	SetWriteHandler(0x8000, 0xFFFF, RainbowPrgFlash);
+
+	// fill WRAM/CHRRAM/DUMMY_CHRRAM/DUMMY_CHRROM with random values
+	if(WRAM)
+		FCEU_MemoryRand(WRAM, WRAMSIZE, false);
+
+	if(CHRRAM)
+		FCEU_MemoryRand(CHRRAM, CHRRAMSIZE, false);
+
+	if(DUMMY_CHRRAM)
+		FCEU_MemoryRand(DUMMY_CHRRAM, DUMMY_CHRRAMSIZE, false);
+
+	if (DUMMY_CHRROM)
+		FCEU_MemoryRand(DUMMY_CHRROM, DUMMY_CHRROMSIZE, false);
 
 	// ESP firmware
 	esp = new BrokeStudioFirmware;
@@ -660,8 +709,14 @@ static void RainbowClose(void)
 		WRAM = NULL;
 	}
 
-	if (CHRRAM != NULL)
+	if (CHRRAM)
 		ExtraNTARAM = NULL;
+
+	if (DUMMY_CHRRAM)
+	{
+		FCEU_gfree(DUMMY_CHRRAM);
+		DUMMY_CHRRAM = NULL;
+	}
 
 	if (PRG_FLASHROM)
 	{
@@ -673,6 +728,12 @@ static void RainbowClose(void)
 	{
 		FCEU_gfree(CHR_FLASHROM);
 		CHR_FLASHROM = NULL;
+	}
+
+	if (esp)
+	{
+		delete esp;
+		esp = NULL;
 	}
 }
 
@@ -690,12 +751,6 @@ static INLINE void DoSQV(int x) {
 	int32 V;
 	int32 amp = (((vpsg1[x << 2] & 15) << 8) * 6 / 8) >> 4;
 	int32 start, end;
-
-	if ((channels & (x + 1)) == 0)
-	{
-		cvbc[x] = 0;
-		return;
-	}
 
 	start = cvbc[x];
 	end = (SOUNDTS << 16) / soundtsinc;
@@ -739,12 +794,6 @@ static void DoSawV(void) {
 	int V;
 	int32 start, end;
 
-	if ((channels & 0x04) == 0)
-	{
-		cvbc[2] = 0;
-		return;
-	}
-
 	start = cvbc[2];
 	end = (SOUNDTS << 16) / soundtsinc;
 	if (end <= start)
@@ -766,7 +815,7 @@ static void DoSawV(void) {
 			if (saw1phaseacc <= 0)
 			{
 				int32 t;
- rea:
+rea:
 				t = freq3;
 				t <<= 18;
 				saw1phaseacc += t;
@@ -789,12 +838,6 @@ static void DoSawV(void) {
 static INLINE void DoSQVHQ(int x) {
 	int32 V;
 	int32 amp = ((vpsg1[x << 2] & 15) << 8) * 6 / 8;
-
-	if ((channels & (x + 1)) == 0)
-	{
-		cvbc[x] = 0;
-		return;
-	}
 
 	if (vpsg1[(x << 2) | 0x2] & 0x80)
 	{
@@ -833,12 +876,6 @@ static void DoSawVHQ(void) {
 	static uint8 b3 = 0;
 	static int32 phaseacc = 0;
 	int32 V;
-
-	if ((channels & 0x04) == 0)
-	{
-		cvbc[2] = 0;
-		return;
-	}
 
 	if (vpsg2[2] & 0x80)
 	{
@@ -897,7 +934,9 @@ static void RainbowESI(void) {
 			sfun[0] = DoSQV1HQ;
 			sfun[1] = DoSQV2HQ;
 			sfun[2] = DoSawVHQ;
-		} else {
+		}
+		else
+		{
 			sfun[0] = DoSQV1;
 			sfun[1] = DoSQV2;
 			sfun[2] = DoSawV;
@@ -960,16 +999,26 @@ void RAINBOW_Init(CartInfo *info) {
 	}
 	SetupCartPRGMapping(0x11, PRG_FLASHROM, PRG_FLASHROMSIZE, 0);
 
-	// CHR-RAM or FLASH ROM
+	// CHR-RAM
 	if (info->vram_size != 0)
 	{
 		CHRRAM = (uint8*)FCEU_gmalloc(CHRRAMSIZE);
-		SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, 1);
+		SetupCartCHRMapping(0x11, CHRRAM, CHRRAMSIZE, 1);
 		AddExState(CHRRAM, CHRRAMSIZE, 0, "CRAM");
 		ExtraNTARAM = CHRRAM + 30 * 1024;
 		AddExState(ExtraNTARAM, 2048, 0, "EXNR");
 	}
-	else if (info->vram_size == 0)
+	else
+	{
+		// create dummy CHR-RAM to avoid crash when trying to use CHR-RAM for nametables
+		// when no CHR-RAM is specified in the ROM header
+		DUMMY_CHRRAM = (uint8*)FCEU_gmalloc(DUMMY_CHRRAMSIZE);
+		ExtraNTARAM = DUMMY_CHRRAM;
+		AddExState(ExtraNTARAM, DUMMY_CHRRAMSIZE, 0, "EXNR");
+	}
+
+	// CHR FLASHROM
+	if (VROM_size != 0)
 	{
 		info->SaveGame[2] = CHR_FLASHROM;
 		info->SaveGameLen[2] = CHR_FLASHROMSIZE;
@@ -988,6 +1037,14 @@ void RAINBOW_Init(CartInfo *info) {
 		SetupCartCHRMapping(0x10, CHR_FLASHROM, CHR_FLASHROMSIZE, 0);
 
 		FFCEUX_PPUWrite = RainbowPPUWrite;
+		FFCEUX_PPURead = RainbowPPURead;
+	}
+	else
+	{
+		// create dummy CHR-ROM to avoid crash when trying to use CHR-ROM for pattern tables
+		// when no CHR-ROM is specified in the ROM header
+		DUMMY_CHRROM = (uint8*)FCEU_gmalloc(DUMMY_CHRROMSIZE);
+		SetupCartCHRMapping(0x10, DUMMY_CHRROM, DUMMY_CHRROMSIZE, 0);
 	}
 
 	AddExState(&FlashRegs, ~0, 0, 0);
