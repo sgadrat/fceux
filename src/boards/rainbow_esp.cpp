@@ -211,6 +211,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case n2e_cmds_t::CLEAR_BUFFERS:
 			UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
+			this->receiveDataFromServer();
+			this->receivePingResult();
 			this->tx_buffer.clear();
 			this->tx_messages.clear();
 			this->rx_buffer.clear();
