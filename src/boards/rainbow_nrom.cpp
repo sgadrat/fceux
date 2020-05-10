@@ -125,7 +125,7 @@ static DECLFW(RAINBOW_NROMWriteFlags)
 
 static DECLFR(RAINBOW_NROMReadFlags)
 {
-	uint8 esp_rts_flag = esp->getGpio15() ? 0x80 : 0x00;
+	uint8 esp_rts_flag = esp->getGpio4() ? 0x80 : 0x00;
 	uint8 esp_enable_flag = esp_enable ? 0x01 : 0x00;
 	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
 	UDBG("RAINBOW read flags %04x => %02x\n", A, esp_rts_flag | esp_enable_flag | irq_enable_flag);
@@ -136,7 +136,7 @@ static void RAINBOW_NROMMapIrq(int32)
 {
 	if (irq_enable)
 	{
-		if (esp->getGpio15())
+		if (esp->getGpio4())
 		{
 			X6502_IRQBegin(FCEU_IQEXT);
 		}

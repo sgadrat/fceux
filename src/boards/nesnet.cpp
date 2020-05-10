@@ -59,7 +59,7 @@ static DECLFR(NESNETReadFlags) {
 
 static void NESNETMapIrq(int32) {
 	if (irq_enable) {
-		if (esp->getGpio15()) {
+		if (esp->getGpio4()) {
 			X6502_IRQBegin(FCEU_IQEXT);
 		} else {
 			X6502_IRQEnd(FCEU_IQEXT);

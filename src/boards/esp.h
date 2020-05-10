@@ -15,8 +15,8 @@ public:
 	virtual uint8 tx() = 0;
 
 	// General purpose I/O pins
-	virtual void setGpio15(bool v) = 0;
-	virtual bool getGpio15() = 0;
+	virtual void setGpio4(bool v) = 0;
+	virtual bool getGpio4() = 0;
 };
 
 #endif
