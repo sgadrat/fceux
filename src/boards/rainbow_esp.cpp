@@ -179,10 +179,10 @@ uint8 BrokeStudioFirmware::tx() {
 	return last_byte_read;
 }
 
-void BrokeStudioFirmware::setGpio15(bool /*v*/) {
+void BrokeStudioFirmware::setGpio4(bool /*v*/) {
 }
 
-bool BrokeStudioFirmware::getGpio15() {
+bool BrokeStudioFirmware::getGpio4() {
 	this->receiveDataFromServer();
 	this->receivePingResult();
 	return !(this->tx_buffer.empty() && this->tx_messages.empty());

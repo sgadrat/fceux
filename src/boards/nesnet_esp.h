@@ -19,8 +19,8 @@ public:
 	void rx(uint8 v) override;
 	uint8 tx() override;
 
-	void setGpio15(bool /*v*/) override {}
-	bool getGpio15() override { return false; }
+	void setGpio4(bool /*v*/) override {}
+	bool getGpio4() override { return false; }
 
 private:
 	void cmdHandlerVariable();
