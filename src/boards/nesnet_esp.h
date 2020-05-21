@@ -10,6 +10,7 @@
 #include <array>
 #include <deque>
 #include <vector>
+#include <stdexcept>
 #include <string>
 
 class InlFirmware : public EspFirmware {
