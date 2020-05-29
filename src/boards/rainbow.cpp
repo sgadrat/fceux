@@ -716,6 +716,7 @@ static void RainbowClose(void)
 	{
 		FCEU_gfree(DUMMY_CHRRAM);
 		DUMMY_CHRRAM = NULL;
+		ExtraNTARAM = NULL;
 	}
 
 	if (PRG_FLASHROM)
