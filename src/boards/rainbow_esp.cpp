@@ -201,7 +201,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			this->tx_messages.push_back({1, static_cast<uint8>(e2n_cmds_t::READY)});
 			break;
 		case n2e_cmds_t::DEBUG_LOG:
-			#ifdef RAINBOW_DEBUG
+			#if RAINBOW_DEBUG >= 1
 				FCEU_printf("RAINBOW DEBUG/LOG: ");
 				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
 					FCEU_printf("%02x ", *cur);
@@ -742,7 +742,7 @@ void BrokeStudioFirmware::loadFiles() {
 
 template<class I>
 void BrokeStudioFirmware::sendMessageToServer(I begin, I end) {
-#ifdef RAINBOW_DEBUG
+#if RAINBOW_DEBUG >= 1
 	FCEU_printf("RAINBOW message to send: ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
@@ -762,7 +762,7 @@ void BrokeStudioFirmware::sendMessageToServer(I begin, I end) {
 
 template<class I>
 void BrokeStudioFirmware::sendUdpDatagramToServer(I begin, I end) {
-#ifdef RAINBOW_DEBUG
+#if RAINBOW_DEBUG >= 1
 	FCEU_printf("RAINBOW udp datagram to send: ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
