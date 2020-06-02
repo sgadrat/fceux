@@ -45,6 +45,8 @@
 #define UDBG(...)
 #endif
 
+#define MAPPER_VERSION		0b00100000
+
 static uint8 latche, latcheinit, bus_conflict, chrram_mask, software_id=false;
 static uint16 latcha;
 static uint8 *flashdata;
@@ -83,6 +85,10 @@ static DECLFR(RAINBOW512ReadFlags) {
 	uint8 irq_enable_flag = irq_enable ? 0x40 : 0x00;
 	UDBG("RAINBOW read flags %04x => %02x\n", A, esp_rts_flag | esp_enable_flag | irq_enable_flag);
 	return esp_rts_flag | esp_enable_flag | irq_enable_flag;
+}
+
+static DECLFR(RAINBOW512ReadVersion) {
+	return MAPPER_VERSION;
 }
 
 static void RAINBOW512MapIrq(int32) {
@@ -201,6 +207,7 @@ static void UNROM512LatchPower(void) {
 	SetReadHandler(0x5000, 0x5000, RAINBOW512Read);
 	SetWriteHandler(0x5001, 0x5001, RAINBOW512WriteFlags);
 	SetReadHandler(0x5001, 0x5001, RAINBOW512ReadFlags);
+	SetReadHandler(0x5C03, 0x5C03, RAINBOW512ReadVersion);
 
 	esp = new BrokeStudioFirmware;
 	esp_enable = true;

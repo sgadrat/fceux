@@ -35,6 +35,8 @@
 #define UDBG(...)
 #endif
 
+#define MAPPER_VERSION		0b00100000
+
 #define MIRR_VERTICAL       0b00 // VRAM
 #define MIRR_HORIZONTAL     0b01 // VRAM
 #define MIRR_ONE_SCREEN     0b10 // VRAM [+ CHR-RAM]
@@ -303,6 +305,8 @@ static DECLFR(RainbowRead) {
 	}
 	case 0x5006:
 		return (nt_set << 6) | (mirr_mode << 4) | (chr_mode_chip << 3) | (chr_mode << 1) | prg_mode;
+	case 0x5C03:
+		return MAPPER_VERSION;
 	default:
 		return 0;
 	}
