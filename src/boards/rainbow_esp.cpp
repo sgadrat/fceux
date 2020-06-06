@@ -85,7 +85,7 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 
 	// Get default host/port
 	char const* hostname = ::getenv("RAINBOW_SERVER_ADDR");
-	if (hostname == nullptr) hostname = "localhost";
+	if (hostname == nullptr) hostname = "";
 	this->server_settings_address = hostname;
 
 	char const* port_cstr = ::getenv("RAINBOW_SERVER_PORT");
@@ -345,15 +345,21 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		}
 		case n2e_cmds_t::GET_SERVER_SETTINGS: {
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_SETTINGS\n");
-			//NOTE the "no settings available" response is not implemented as we ensure a default one in the constructor
-			std::deque<uint8> message({
-				static_cast<uint8>(1 + 2 + this->server_settings_address.size()),
-				static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS),
-				static_cast<uint8>(this->server_settings_port >> 8),
-				static_cast<uint8>(this->server_settings_port & 0xff)
-			});
-			message.insert(message.end(), this->server_settings_address.begin(), this->server_settings_address.end());
-			this->tx_messages.push_back(message);
+			if (this->server_settings_address.empty()) {
+				this->tx_messages.push_back({
+					1,
+					static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS)
+				});
+			}else {
+				std::deque<uint8> message({
+					static_cast<uint8>(1 + 2 + this->server_settings_address.size()),
+					static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS),
+					static_cast<uint8>(this->server_settings_port >> 8),
+					static_cast<uint8>(this->server_settings_port & 0xff)
+				});
+				message.insert(message.end(), this->server_settings_address.begin(), this->server_settings_address.end());
+				this->tx_messages.push_back(message);
+			}
 			break;
 		}
 		case n2e_cmds_t::SET_SERVER_SETTINGS:
