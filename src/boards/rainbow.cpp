@@ -659,6 +659,7 @@ static void RainbowPower(void) {
 
 	// mapper
 	IRQCount = IRQLatch = IRQa = 0;
+	prg_mode = PRG_MODE_16K_8K;
 	Sync();
 	SetReadHandler(0x6000, 0xFFFF, CartBR);
 	SetWriteHandler(0x6000, 0x7FFF, CartBW);
@@ -988,9 +989,9 @@ void RAINBOW_Init(CartInfo *info) {
 	}
 
 	// PRG FLASH ROM
+	PRG_FLASHROM = (uint8*)FCEU_gmalloc(PRG_FLASHROMSIZE);
 	info->SaveGame[1] = PRG_FLASHROM;
 	info->SaveGameLen[1] = PRG_FLASHROMSIZE;
-	PRG_FLASHROM = (uint8*)FCEU_gmalloc(PRG_FLASHROMSIZE);
 	AddExState(PRG_FLASHROM, PRG_FLASHROMSIZE, 0, "PFROM");
 
 	// copy PRG ROM into PRG_FLASHROM, use it instead of PRG ROM
@@ -1025,9 +1026,9 @@ void RAINBOW_Init(CartInfo *info) {
 	// CHR FLASHROM
 	if (VROM_size != 0)
 	{
+		CHR_FLASHROM = (uint8*)FCEU_gmalloc(CHR_FLASHROMSIZE);
 		info->SaveGame[2] = CHR_FLASHROM;
 		info->SaveGameLen[2] = CHR_FLASHROMSIZE;
-		CHR_FLASHROM = (uint8*)FCEU_gmalloc(CHR_FLASHROMSIZE);
 		AddExState(CHR_FLASHROM, CHR_FLASHROMSIZE, 0, "CFROM");
 
 		// copy CHR ROM into CHR_FLASHROM, use it instead of CHR ROM
