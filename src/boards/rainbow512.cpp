@@ -45,7 +45,7 @@
 #define UDBG(...)
 #endif
 
-#define MAPPER_VERSION		0b00100000
+#define MAPPER_VERSION		0b00010000
 
 static uint8 latche, latcheinit, bus_conflict, chrram_mask, software_id=false;
 static uint16 latcha;

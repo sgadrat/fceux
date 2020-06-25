@@ -35,7 +35,7 @@
 #define UDBG(...)
 #endif
 
-#define MAPPER_VERSION		0b00100000
+#define MAPPER_VERSION		0b00010000
 
 #define MIRR_VERTICAL       0b00 // VRAM
 #define MIRR_HORIZONTAL     0b01 // VRAM
