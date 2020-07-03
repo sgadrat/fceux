@@ -35,6 +35,8 @@ private:
 	// Defined message types from CPU to ESP
 	enum class n2e_cmds_t : uint8 {
 		GET_ESP_STATUS,
+		DEBUG_GET_CONFIG,
+		DEBUG_SET_CONFIG,
 		DEBUG_LOG,
 		CLEAR_BUFFERS,
 		E2N_BUFFER_DROP,
@@ -70,6 +72,7 @@ private:
 	// Defined message types from ESP to CPU
 	enum class e2n_cmds_t : uint8 {
 		READY,
+		DEBUG_CONFIG,
 
 		FILE_EXISTS,
 		FILE_DELETE,
@@ -115,9 +118,6 @@ private:
 	void pingRequest(uint8 n);
 	void receivePingResult();
 
-	static std::string pathStrFromIndex(uint8 path, uint8 file);
-	static std::pair<uint8, uint8> pathIndexFromStr(std::string const&);
-
 	static void httpdEvent(mg_connection *nc, int ev, void *ev_data);
 
 private:
@@ -134,6 +134,8 @@ private:
 	server_protocol_t active_protocol = server_protocol_t::WEBSOCKET;
 	std::string server_settings_address;
 	uint16_t server_settings_port = 0;
+
+	uint8 debug_config = 0;
 
 	easywsclient::WebSocket::pointer socket = nullptr;
 	std::thread socket_close_thread;
