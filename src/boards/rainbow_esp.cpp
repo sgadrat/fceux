@@ -200,14 +200,28 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
 			this->tx_messages.push_back({1, static_cast<uint8>(e2n_cmds_t::READY)});
 			break;
+		case n2e_cmds_t::DEBUG_GET_CONFIG:
+			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_GET_CONFIG\n");
+			this->tx_messages.push_back({
+				2,
+				static_cast<uint8>(e2n_cmds_t::DEBUG_CONFIG),
+				static_cast<uint8>(this->debug_config)
+				});
+			break;
+		case n2e_cmds_t::DEBUG_SET_CONFIG:
+			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_CONFIG\n");
+			if (message_size == 3) {
+				this->debug_config = this->rx_buffer.at(2);
+			}
+			break;
 		case n2e_cmds_t::DEBUG_LOG:
-			#if RAINBOW_DEBUG >= 1
-				FCEU_printf("RAINBOW DEBUG/LOG: ");
-				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
-					FCEU_printf("%02x ", *cur);
+			UDBG("RAINBOW DEBUG/LOG\n");
+				if (this->debug_config & 1 == 1) {
+					for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
+						FCEU_printf("%02x ", *cur);
+					}
+					FCEU_printf("\n");
 				}
-				FCEU_printf("\n");
-			#endif
 			break;
 		case n2e_cmds_t::CLEAR_BUFFERS:
 			UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
@@ -1017,7 +1031,28 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 		UDBG("http request event \n");
 		struct http_message *hm = (struct http_message *) ev_data;
 		UDBG("  uri: %.*s\n", hm->uri.len, hm->uri.p);
-		if (std::string("/api/file/list") == std::string(hm->uri.p, hm->uri.len)) {
+		if (std::string("/api/esp/debugconfig") == std::string(hm->uri.p, hm->uri.len)) {
+			if (mg_vcasecmp(&hm->method, "POST") == 0) {
+
+				char var_name[100], file_name[100];
+				const char *chunk;
+				size_t chunk_len, n1, n2;
+				n1 = n2 = 0;
+				while ((n2 = mg_parse_multipart(hm->body.p + n1, hm->body.len - n1, var_name, sizeof(var_name), file_name, sizeof(file_name), &chunk, &chunk_len)) > 0) {
+					if (strcmp(var_name, "debugConfig") == 0) {
+						self->debug_config = *chunk - '0';
+						send_message(200, "{\"success\":\"true\"}\n", "application/json");
+						break;
+					}
+					n1 += n2;
+				}
+			}else {
+				mg_send_response_line(nc, 200, "Content-Type: application/json\r\nConnection: close\r\n");
+				mg_printf(nc, "{\"debugConfig\":\"%u\"}", self->debug_config);
+				nc->flags |= MG_F_SEND_AND_CLOSE;
+			}
+		}
+		else if (std::string("/api/file/list") == std::string(hm->uri.p, hm->uri.len)) {
 			char path[256];
 			int const path_len = mg_get_http_var(&hm->query_string, "path", path, 256);
 			if (path_len < 0) {
