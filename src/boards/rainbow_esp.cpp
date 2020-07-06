@@ -200,19 +200,20 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
 			this->tx_messages.push_back({1, static_cast<uint8>(e2n_cmds_t::READY)});
 			break;
-		case n2e_cmds_t::DEBUG_GET_CONFIG:
-			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_GET_CONFIG\n");
+		case n2e_cmds_t::DEBUG_GET_LEVEL:
+			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_GET_LEVEL\n");
 			this->tx_messages.push_back({
 				2,
-				static_cast<uint8>(e2n_cmds_t::DEBUG_CONFIG),
+				static_cast<uint8>(e2n_cmds_t::DEBUG_LEVEL),
 				static_cast<uint8>(this->debug_config)
 				});
 			break;
-		case n2e_cmds_t::DEBUG_SET_CONFIG:
-			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_CONFIG\n");
+		case n2e_cmds_t::DEBUG_SET_LEVEL:
+			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_LEVEL\n");
 			if (message_size == 3) {
 				this->debug_config = this->rx_buffer.at(2);
 			}
+			FCEU_printf("DEBUG LEVEL SET TO: %u\n", this->debug_config);
 			break;
 		case n2e_cmds_t::DEBUG_LOG:
 			UDBG("RAINBOW DEBUG/LOG\n");
