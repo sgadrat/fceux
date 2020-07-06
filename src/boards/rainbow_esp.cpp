@@ -87,11 +87,13 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 	char const* hostname = ::getenv("RAINBOW_SERVER_ADDR");
 	if (hostname == nullptr) hostname = "";
 	this->server_settings_address = hostname;
+	this->default_server_settings_address = hostname;
 
 	char const* port_cstr = ::getenv("RAINBOW_SERVER_PORT");
-	if (port_cstr == nullptr) port_cstr = "3000";
+	if (port_cstr == nullptr) port_cstr = "0";
 	std::istringstream port_iss(port_cstr);
 	port_iss >> this->server_settings_port;
+	this->default_server_settings_port = this->server_settings_port;
 
 	// Start web server
 	this->httpd_run = true;
@@ -360,19 +362,39 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		}
 		case n2e_cmds_t::GET_SERVER_SETTINGS: {
 			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_SETTINGS\n");
-			if (this->server_settings_address.empty()) {
+			if (this->server_settings_address.empty() && this->server_settings_port == 0) {
 				this->tx_messages.push_back({
 					1,
-					static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS)
+					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS)
 				});
 			}else {
 				std::deque<uint8> message({
 					static_cast<uint8>(1 + 2 + this->server_settings_address.size()),
-					static_cast<uint8>(e2n_cmds_t::HOST_SETTINGS),
+					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS),
 					static_cast<uint8>(this->server_settings_port >> 8),
 					static_cast<uint8>(this->server_settings_port & 0xff)
 				});
 				message.insert(message.end(), this->server_settings_address.begin(), this->server_settings_address.end());
+				this->tx_messages.push_back(message);
+			}
+			break;
+		}
+		case n2e_cmds_t::GET_SERVER_CONFIG_SETTINGS: {
+			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_CONFIG_SETTINGS\n");
+			if (this->default_server_settings_address.empty() && this->default_server_settings_port == 0) {
+				this->tx_messages.push_back({
+					1,
+					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS)
+					});
+			}
+			else {
+				std::deque<uint8> message({
+					static_cast<uint8>(1 + 2 + this->default_server_settings_address.size()),
+					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS),
+					static_cast<uint8>(this->default_server_settings_port >> 8),
+					static_cast<uint8>(this->default_server_settings_port & 0xff)
+					});
+				message.insert(message.end(), this->default_server_settings_address.begin(), this->default_server_settings_address.end());
 				this->tx_messages.push_back(message);
 			}
 			break;
@@ -386,6 +408,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				;
 				this->server_settings_address = std::string(this->rx_buffer.begin()+4, this->rx_buffer.end());
 			}
+			break;
+		case n2e_cmds_t::RESTORE_SERVER_SETTINGS:
+			UDBG("RAINBOW BrokeStudioFirmware received message RESTORE_SERVER_SETTINGS\n");
+			this->server_settings_address = this->default_server_settings_address;
+			this->server_settings_port = this->default_server_settings_port;
 			break;
 		case n2e_cmds_t::CONNECT_TO_SERVER:
 			UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
