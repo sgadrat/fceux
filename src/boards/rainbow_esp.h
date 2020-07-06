@@ -50,7 +50,9 @@ private:
 		GET_SERVER_PING,
 		SET_SERVER_PROTOCOL,
 		GET_SERVER_SETTINGS,
+		GET_SERVER_CONFIG_SETTINGS,
 		SET_SERVER_SETTINGS,
+		RESTORE_SERVER_SETTINGS,
 		CONNECT_TO_SERVER,
 		DISCONNECT_FROM_SERVER,
 		SEND_MESSAGE_TO_SERVER,
@@ -85,7 +87,7 @@ private:
 		WIFI_STATUS,
 		SERVER_STATUS,
 		SERVER_PING,
-		HOST_SETTINGS,
+		SERVER_SETTINGS,
 
 		RND_BYTE,
 		RND_WORD,
@@ -132,6 +134,8 @@ private:
 	uint8 working_file = NO_WORKING_FILE;
 
 	server_protocol_t active_protocol = server_protocol_t::WEBSOCKET;
+	std::string default_server_settings_address;
+	uint16_t default_server_settings_port = 0;
 	std::string server_settings_address;
 	uint16_t server_settings_port = 0;
 
