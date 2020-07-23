@@ -131,6 +131,12 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
 	UDBG("RAINBOW BrokeStudioFirmware dtor\n");
+
+	this->closeConnection();
+	if (this->socket_close_thread.joinable()) {
+		this->socket_close_thread.join();
+	}
+
 	if (this->socket != nullptr) {
 		delete this->socket;
 		this->socket = nullptr;
@@ -166,6 +172,9 @@ uint8 BrokeStudioFirmware::tx() {
 	// Fill buffer with the next message (if needed)
 	if (this->tx_buffer.empty() && !this->tx_messages.empty()) {
 		std::deque<uint8> message = this->tx_messages.front();
+		// add last received byte first to match hardware behavior
+		// it's more of a mapper thing though ...
+		// needs a dummy $5000 read when reading data from buffer
 		this->tx_buffer.push_back(last_byte_read);
 		this->tx_buffer.insert(this->tx_buffer.end(), message.begin(), message.end());
 		this->tx_messages.pop_front();
@@ -845,12 +854,9 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 			if (msg_len <= 0xff) {
 				UDBG("RAINBOW WebSocket data received... size %02x, msg: ", msg_len);
 				for (uint8_t const c: data) {
-					UDBG("%02x", c);
+					UDBG("%02x ", c);
 				}
 				UDBG("\n");
-				// add last received byte first to match hardware behavior
-				// it's more of a mapper thing though ...
-				// needs a dummy $5000 read when reading data from buffer
 				std::deque<uint8> message({
 					static_cast<uint8>(msg_len+1),
 					static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER)
