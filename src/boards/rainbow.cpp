@@ -967,6 +967,7 @@ void NSFRainbow_Init(void) {
 // mapper init
 
 void RAINBOW_Init(CartInfo *info) {
+	int save_game_index = 0;
 	info->Power = RainbowPower;
 	info->Close = RainbowClose;
 
@@ -980,19 +981,22 @@ void RAINBOW_Init(CartInfo *info) {
 		WRAM = (uint8*)FCEU_gmalloc(WRAMSIZE);
 		SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, 1);
 		AddExState(WRAM, WRAMSIZE, 0, "WRAM");
-	}
 
-	if (info->battery)
-	{
-		info->SaveGame[0] = WRAM;
-		info->SaveGameLen[0] = WRAMSIZE;
+		if (info->battery)
+		{
+			info->SaveGame[save_game_index] = WRAM;
+			info->SaveGameLen[save_game_index] = WRAMSIZE;
+			save_game_index++;
+		}
+
 	}
 
 	// PRG FLASH ROM
 	PRG_FLASHROM = (uint8*)FCEU_gmalloc(PRG_FLASHROMSIZE);
-	info->SaveGame[1] = PRG_FLASHROM;
-	info->SaveGameLen[1] = PRG_FLASHROMSIZE;
+	info->SaveGame[save_game_index] = PRG_FLASHROM;
+	info->SaveGameLen[save_game_index] = PRG_FLASHROMSIZE;
 	AddExState(PRG_FLASHROM, PRG_FLASHROMSIZE, 0, "PFROM");
+	save_game_index++;
 
 	// copy PRG ROM into PRG_FLASHROM, use it instead of PRG ROM
 	const uint32 PRGSIZE = ROM_size * 16 * 1024;
@@ -1027,9 +1031,10 @@ void RAINBOW_Init(CartInfo *info) {
 	if (VROM_size != 0)
 	{
 		CHR_FLASHROM = (uint8*)FCEU_gmalloc(CHR_FLASHROMSIZE);
-		info->SaveGame[2] = CHR_FLASHROM;
-		info->SaveGameLen[2] = CHR_FLASHROMSIZE;
+		info->SaveGame[save_game_index] = CHR_FLASHROM;
+		info->SaveGameLen[save_game_index] = CHR_FLASHROMSIZE;
 		AddExState(CHR_FLASHROM, CHR_FLASHROMSIZE, 0, "CFROM");
+		save_game_index++;
 
 		// copy CHR ROM into CHR_FLASHROM, use it instead of CHR ROM
 		const uint32 CHRSIZE = VROM_size * 8 * 1024;
