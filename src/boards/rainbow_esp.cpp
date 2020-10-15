@@ -228,12 +228,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case n2e_cmds_t::DEBUG_LOG:
 			UDBG("RAINBOW DEBUG/LOG\n");
-				if (this->debug_config & 1 == 1) {
-					for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
-						FCEU_printf("%02x ", *cur);
-					}
-					FCEU_printf("\n");
+			if (this->debug_config & 1) {
+				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
+					FCEU_printf("%02x ", *cur);
 				}
+				FCEU_printf("\n");
+			}
 			break;
 		case n2e_cmds_t::CLEAR_BUFFERS:
 			UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
