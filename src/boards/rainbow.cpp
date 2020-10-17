@@ -993,10 +993,13 @@ void RAINBOW_Init(CartInfo *info) {
 
 	// PRG FLASH ROM
 	PRG_FLASHROM = (uint8*)FCEU_gmalloc(PRG_FLASHROMSIZE);
-	info->SaveGame[save_game_index] = PRG_FLASHROM;
-	info->SaveGameLen[save_game_index] = PRG_FLASHROMSIZE;
 	AddExState(PRG_FLASHROM, PRG_FLASHROMSIZE, 0, "PFROM");
-	save_game_index++;
+	if (info->battery)
+	{
+		info->SaveGame[save_game_index] = PRG_FLASHROM;
+		info->SaveGameLen[save_game_index] = PRG_FLASHROMSIZE;
+		save_game_index++;
+	}
 
 	// copy PRG ROM into PRG_FLASHROM, use it instead of PRG ROM
 	const uint32 PRGSIZE = ROM_size * 16 * 1024;
@@ -1031,10 +1034,13 @@ void RAINBOW_Init(CartInfo *info) {
 	if (VROM_size != 0)
 	{
 		CHR_FLASHROM = (uint8*)FCEU_gmalloc(CHR_FLASHROMSIZE);
-		info->SaveGame[save_game_index] = CHR_FLASHROM;
-		info->SaveGameLen[save_game_index] = CHR_FLASHROMSIZE;
 		AddExState(CHR_FLASHROM, CHR_FLASHROMSIZE, 0, "CFROM");
-		save_game_index++;
+		if (info->battery)
+		{
+			info->SaveGame[save_game_index] = CHR_FLASHROM;
+			info->SaveGameLen[save_game_index] = CHR_FLASHROMSIZE;
+			save_game_index++;
+		}
 
 		// copy CHR ROM into CHR_FLASHROM, use it instead of CHR ROM
 		const uint32 CHRSIZE = VROM_size * 8 * 1024;
