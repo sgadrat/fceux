@@ -35,7 +35,7 @@ typedef SSIZE_T ssize_t;
 
 using easywsclient::WebSocket;
 
-#define RAINBOW_DEBUG 1
+#define RAINBOW_DEBUG 0
 
 #if RAINBOW_DEBUG >= 1
 #define UDBG(...) FCEU_printf(__VA_ARGS__)
@@ -47,6 +47,15 @@ using easywsclient::WebSocket;
 #define UDBG_FLOOD(...) FCEU_printf(__VA_ARGS__)
 #else
 #define UDBG_FLOOD(...)
+#endif
+
+#if RAINBOW_DEBUG >= 1
+#include "../debug.h"
+namespace {
+uint64_t wall_clock_milli() {
+	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+};
+}
 #endif
 
 namespace {
@@ -820,10 +829,13 @@ void BrokeStudioFirmware::sendMessageToServer(I begin, I end) {
 template<class I>
 void BrokeStudioFirmware::sendUdpDatagramToServer(I begin, I end) {
 #if RAINBOW_DEBUG >= 1
-	FCEU_printf("RAINBOW udp datagram to send: ");
+	FCEU_printf("RAINBOW %lu udp datagram to send", wall_clock_milli());
+#	if RAINBOW_DEBUG >= 2
+	FCEU_printf(": ");
 	for (I cur = begin; cur < end; ++cur) {
 		FCEU_printf("%02x ", *cur);
 	}
+#	endif
 	FCEU_printf("\n");
 #endif
 
@@ -852,10 +864,13 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 		this->socket->dispatchBinary([this] (std::vector<uint8_t> const& data) {
 			size_t const msg_len = data.end() - data.begin();
 			if (msg_len <= 0xff) {
-				UDBG("RAINBOW WebSocket data received... size %02x, msg: ", msg_len);
+				UDBG("RAINBOW %lu WebSocket data received... size %02x", wall_clock_milli(), msg_len);
+#if RAINBOW_DEBUG >= 2
+				UDBG_FLOOD(": ");
 				for (uint8_t const c: data) {
-					UDBG("%02x ", c);
+					UDBG_FLOOD("%02x ", c);
 				}
+#endif
 				UDBG("\n");
 				std::deque<uint8> message({
 					static_cast<uint8>(msg_len+1),
@@ -894,10 +909,13 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 				if (msg_len == -1) {
 					UDBG("RAINBOW failed to read UDP socket: %s\n", strerror(errno));
 				}else if (msg_len < 256) {
-					UDBG("RAINBOW received UDP datagram of size %zd: ", msg_len);
+					UDBG("RAINBOW %lu received UDP datagram of size %zd", wall_clock_milli(), msg_len);
+#if RAINBOW_DEBUG >= 2
+					UDBG_FLOOD(": ");
 					for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
-						UDBG("%02x", *it);
+						UDBG_FLOOD("%02x", *it);
 					}
+#endif
 					UDBG("\n");
 					std::deque<uint8> message({
 						static_cast<uint8>(msg_len+1),
