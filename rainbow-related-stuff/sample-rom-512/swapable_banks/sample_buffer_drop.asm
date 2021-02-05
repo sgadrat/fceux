@@ -68,7 +68,7 @@ cmd_file_create:
 cmd_file_info:
 .byt 3, TOESP_MSG_FILE_GET_INFO, ESP_FILE_PATH_SAVE, 5
 cmd_buffer_drop:
-.byt 3, TOESP_MSG_E2N_BUFFER_DROP, FROMESP_MSG_FILE_EXISTS, 2
+.byt 3, TOESP_MSG_BUFFER_DROP_FROM_ESP, FROMESP_MSG_FILE_EXISTS, 2
 
 palettes_data:
 ; Background

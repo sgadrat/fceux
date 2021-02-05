@@ -83,7 +83,7 @@ sample_noirq_screen_send_msg:
 	lda #15   ; Message length
 	sta $5000 ;
 
-	lda #TOESP_MSG_SEND_MESSAGE_TO_SERVER ; Message type - message for the server
+	lda #TOESP_MSG_SERVER_SEND_MESSAGE    ; Message type - message for the server
 	sta $5000                             ;
 
 	lda #$52  ;
@@ -126,7 +126,7 @@ sample_noirq_show_connection_state:
 	; Fetch wifi state
 	lda #1                         ;
 	sta $5000                      ;
-	lda #TOESP_MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
+	lda #TOESP_MSG_WIFI_GET_STATUS ; Send wifi status request to ESP
 	sta $5000                      ;
 
 	.(               ;
@@ -151,7 +151,7 @@ sample_noirq_show_connection_state:
 	; Fetch server state
 	lda #1                           ;
 	sta $5000                        ;
-	lda #TOESP_MSG_GET_SERVER_STATUS ; Send server status request to ESP
+	lda #TOESP_MSG_SERVER_GET_STATUS ; Send server status request to ESP
 	sta $5000                        ;
 
 	.(               ;

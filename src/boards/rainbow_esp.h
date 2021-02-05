@@ -19,6 +19,16 @@
 static uint8 const NO_WORKING_FILE = 0xff;
 static uint8 const NUM_FILE_PATHS = 3;
 static uint8 const NUM_FILES = 64;
+static uint8 const NUM_NETWORKS = 3;
+static uint8 const NUM_FAKE_NETWORKS = 5;
+static uint8 const SSID_MAX_LENGTH = 32;
+static uint8 const PASS_MAX_LENGTH = 64;
+
+struct NetworkInfo
+{
+	std::string ssid;
+	std::string pass;
+};
 
 class BrokeStudioFirmware: public EspFirmware {
 public:
@@ -33,30 +43,44 @@ public:
 
 private:
 	// Defined message types from CPU to ESP
-	enum class n2e_cmds_t : uint8 {
-		GET_ESP_STATUS,
+	enum class toesp_cmds_t : uint8 {
+		// ESP CMDS
+		ESP_GET_STATUS,
 		DEBUG_GET_LEVEL,
 		DEBUG_SET_LEVEL,
 		DEBUG_LOG,
-		CLEAR_BUFFERS,
-		E2N_BUFFER_DROP,
-		GET_WIFI_STATUS,
-		GET_RND_BYTE,
-		GET_RND_BYTE_RANGE,
-		GET_RND_WORD,
-		GET_RND_WORD_RANGE,
+		BUFFER_CLEAR_RX_TX,
+		BUFFER_DROP_FROM_ESP,
+		WIFI_GET_STATUS,
+		ESP_RESTART,
 
-		GET_SERVER_STATUS,
-		GET_SERVER_PING,
-		SET_SERVER_PROTOCOL,
-		GET_SERVER_SETTINGS,
-		GET_SERVER_CONFIG_SETTINGS,
-		SET_SERVER_SETTINGS,
-		RESTORE_SERVER_SETTINGS,
-		CONNECT_TO_SERVER,
-		DISCONNECT_FROM_SERVER,
-		SEND_MESSAGE_TO_SERVER,
+		// RND CMDS
+		RND_GET_BYTE,
+		RND_GET_BYTE_RANGE, // ; min / max
+		RND_GET_WORD,
+		RND_GET_WORD_RANGE, // ; min / max
 
+		// SERVER CMDS
+		SERVER_GET_STATUS,
+		SERVER_PING,
+		SERVER_GET_PROTOCOL,
+		SERVER_GET_SETTINGS,
+		SERVER_GET_CONFIG_SETTINGS,
+		SERVER_SET_SETTINGS,
+		SERVER_RESTORE_SETTINGS,
+		SERVER_CONNECT,
+		SERVER_DISCONNECT,
+		SERVER_SEND_MSG,
+
+		// NETWORK CMDS
+		NETWORK_SCAN,
+		NETWORK_GET_DETAILS,
+		NETWORK_GET_REGISTERED,
+		NETWORK_GET_REGISTERED_DETAILS,
+		NETWORK_REGISTER,
+		NETWORK_UNREGISTER,
+
+		// FILE CMDS
 		FILE_OPEN,
 		FILE_CLOSE,
 		FILE_EXISTS,
@@ -72,10 +96,29 @@ private:
 	};
 
 	// Defined message types from ESP to CPU
-	enum class e2n_cmds_t : uint8 {
+	enum class fromesp_cmds_t : uint8 {
+		// ESP CMDS
 		READY,
 		DEBUG_LEVEL,
+		WIFI_STATUS,
 
+		// RND CMDS
+		RND_BYTE,
+		RND_WORD,
+
+		// SERVER CMDS
+		SERVER_STATUS,
+		SERVER_PING,
+		SERVER_SETTINGS,
+		MESSAGE_FROM_SERVER,
+
+		// NETWORK CMDS
+		NETWORK_COUNT,
+		NETWORK_SCANNED_DETAILS,
+		NETWORK_REGISTERED_DETAILS,
+		NETWORK_REGISTERED,
+
+		// FILE CMDS
 		FILE_EXISTS,
 		FILE_DELETE,
 		FILE_LIST,
@@ -83,16 +126,6 @@ private:
 		FILE_COUNT,
 		FILE_ID,
 		FILE_INFO,
-
-		WIFI_STATUS,
-		SERVER_STATUS,
-		SERVER_PING,
-		SERVER_SETTINGS,
-
-		RND_BYTE,
-		RND_WORD,
-
-		MESSAGE_FROM_SERVER,
 	};
 
 	enum class server_protocol_t : uint8 {
@@ -132,6 +165,8 @@ private:
 	uint32 file_offset = 0;
 	uint8 working_path = 0;
 	uint8 working_file = NO_WORKING_FILE;
+
+	std::array<NetworkInfo, NUM_NETWORKS> networks;
 
 	server_protocol_t active_protocol = server_protocol_t::WEBSOCKET;
 	std::string default_server_settings_address;
