@@ -81,7 +81,7 @@ sample_connection_switch_connection:
 		; Send connection message
 		lda #1
 		sta $5000
-		lda #TOESP_MSG_CONNECT_TO_SERVER
+		lda #TOESP_MSG_SERVER_CONNECT
 		sta $5000
 
 		jmp end
@@ -91,7 +91,7 @@ sample_connection_switch_connection:
 		; Send disconnection message
 		lda #1
 		sta $5000
-		lda #TOESP_MSG_DISCONNECT_FROM_SERVER
+		lda #TOESP_MSG_SERVER_DISCONNECT
 		sta $5000
 
 	end:
@@ -103,7 +103,7 @@ sample_connection_show_connection_state:
 	; Fetch wifi state
 	lda #1                         ;
 	sta $5000                      ;
-	lda #TOESP_MSG_GET_WIFI_STATUS ; Send wifi status request to ESP
+	lda #TOESP_MSG_WIFI_GET_STATUS ; Send wifi status request to ESP
 	sta $5000                      ;
 
 	.(               ;
@@ -128,7 +128,7 @@ sample_connection_show_connection_state:
 	; Fetch server state
 	lda #1                           ;
 	sta $5000                        ;
-	lda #TOESP_MSG_GET_SERVER_STATUS ; Send server status request to ESP
+	lda #TOESP_MSG_SERVER_GET_STATUS ; Send server status request to ESP
 	sta $5000                        ;
 
 	.(               ;

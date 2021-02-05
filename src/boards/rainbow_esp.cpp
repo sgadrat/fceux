@@ -131,6 +131,13 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 		}
 	}
 
+	// Init fake registered networks
+	this->networks = { {
+		{"FCEUX_SSID", "FCEUX_PASS"},
+		{"", ""},
+		{"", ""},
+	} };
+
 	// Load file list from save file (if any)
 	this->loadFiles();
 
@@ -172,8 +179,6 @@ void BrokeStudioFirmware::rx(uint8 v) {
 }
 
 uint8 BrokeStudioFirmware::tx() {
-	UDBG_FLOOD("RAINBOW BrokeStudioFirmware tx\n");
-
 	// Refresh buffer from network
 	this->receiveDataFromServer();
 	this->receivePingResult();
@@ -195,7 +200,7 @@ uint8 BrokeStudioFirmware::tx() {
 		this->tx_buffer.pop_front();
 	}
 
-	//UDBG("RAINBOW BrokeStudioFirmware tx <= %02x\n", last_byte_read);
+	UDBG_FLOOD("RAINBOW BrokeStudioFirmware tx %02x\n", last_byte_read);
 	return last_byte_read;
 }
 
@@ -215,27 +220,30 @@ void BrokeStudioFirmware::processBufferedMessage() {
 	assert(this->rx_buffer.size() == static_cast<std::deque<uint8>::size_type>(message_size) + 1); // Buffer size must match declared payload size
 
 	// Process the message in RX buffer
-	switch (static_cast<n2e_cmds_t>(this->rx_buffer.at(1))) {
-		case n2e_cmds_t::GET_ESP_STATUS:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_ESP_STATUS\n");
-			this->tx_messages.push_back({1, static_cast<uint8>(e2n_cmds_t::READY)});
+	switch (static_cast<toesp_cmds_t>(this->rx_buffer.at(1))) {
+		
+		// ESP CMDS
+
+		case toesp_cmds_t::ESP_GET_STATUS:
+			UDBG("RAINBOW BrokeStudioFirmware received message ESP_GET_STATUS\n");
+			this->tx_messages.push_back({1, static_cast<uint8>(fromesp_cmds_t::READY)});
 			break;
-		case n2e_cmds_t::DEBUG_GET_LEVEL:
+		case toesp_cmds_t::DEBUG_GET_LEVEL:
 			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_GET_LEVEL\n");
 			this->tx_messages.push_back({
 				2,
-				static_cast<uint8>(e2n_cmds_t::DEBUG_LEVEL),
+				static_cast<uint8>(fromesp_cmds_t::DEBUG_LEVEL),
 				static_cast<uint8>(this->debug_config)
 				});
 			break;
-		case n2e_cmds_t::DEBUG_SET_LEVEL:
+		case toesp_cmds_t::DEBUG_SET_LEVEL:
 			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_LEVEL\n");
 			if (message_size == 3) {
 				this->debug_config = this->rx_buffer.at(2);
 			}
 			FCEU_printf("DEBUG LEVEL SET TO: %u\n", this->debug_config);
 			break;
-		case n2e_cmds_t::DEBUG_LOG:
+		case toesp_cmds_t::DEBUG_LOG:
 			UDBG("RAINBOW DEBUG/LOG\n");
 			if (this->debug_config & 1) {
 				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
@@ -244,16 +252,16 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				FCEU_printf("\n");
 			}
 			break;
-		case n2e_cmds_t::CLEAR_BUFFERS:
-			UDBG("RAINBOW BrokeStudioFirmware received message CLEAR_BUFFERS\n");
+		case toesp_cmds_t::BUFFER_CLEAR_RX_TX:
+			UDBG("RAINBOW BrokeStudioFirmware received message BUFFER_CLEAR_RX_TX\n");
 			this->receiveDataFromServer();
 			this->receivePingResult();
 			this->tx_buffer.clear();
 			this->tx_messages.clear();
 			this->rx_buffer.clear();
 			break;
-		case n2e_cmds_t::E2N_BUFFER_DROP:
-			UDBG("RAINBOW BrokeStudioFirmware received message E2N_BUFFER_DROP\n");
+		case toesp_cmds_t::BUFFER_DROP_FROM_ESP:
+			UDBG("RAINBOW BrokeStudioFirmware received message BUFFER_DROP_FROM_ESP\n");
 			if (message_size == 3) {
 				uint8 const message_type = this->rx_buffer.at(2);
 				uint8 const n_keep = this->rx_buffer.at(3);
@@ -279,55 +287,61 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 			}
 			break;
-		case n2e_cmds_t::GET_WIFI_STATUS:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_WIFI_STATUS\n");
-			this->tx_messages.push_back({2, static_cast<uint8>(e2n_cmds_t::WIFI_STATUS), 3}); // Simple answer, wifi is ok
+		case toesp_cmds_t::WIFI_GET_STATUS:
+			UDBG("RAINBOW BrokeStudioFirmware received message WIFI_GET_STATUS\n");
+			this->tx_messages.push_back({2, static_cast<uint8>(fromesp_cmds_t::WIFI_STATUS), 3}); // Simple answer, wifi is ok
 			break;
-		case n2e_cmds_t::GET_RND_BYTE:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_BYTE\n");
+
+		// RND CMDS
+
+		case toesp_cmds_t::RND_GET_BYTE:
+			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_BYTE\n");
 			this->tx_messages.push_back({
 				2,
-				static_cast<uint8>(e2n_cmds_t::RND_BYTE),
+				static_cast<uint8>(fromesp_cmds_t::RND_BYTE),
 				static_cast<uint8>(rand() % 256)
 			});
 			break;
-		case n2e_cmds_t::GET_RND_BYTE_RANGE: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_BYTE_RANGE\n");
+		case toesp_cmds_t::RND_GET_BYTE_RANGE: {
+			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_BYTE_RANGE\n");
 			int const min_value = this->rx_buffer.at(2);
 			int const max_value = this->rx_buffer.at(3);
 			int const range = max_value - min_value;
 			this->tx_messages.push_back({
 				2,
-				static_cast<uint8>(e2n_cmds_t::RND_BYTE),
+				static_cast<uint8>(fromesp_cmds_t::RND_BYTE),
 				static_cast<uint8>(min_value + (rand() % range))
 			});
 			break;
 		}
-		case n2e_cmds_t::GET_RND_WORD:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_WORD\n");
+		case toesp_cmds_t::RND_GET_WORD:
+			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_WORD\n");
 			this->tx_messages.push_back({
 				3,
-				static_cast<uint8>(e2n_cmds_t::RND_WORD),
+				static_cast<uint8>(fromesp_cmds_t::RND_WORD),
 				static_cast<uint8>(rand() % 256),
 				static_cast<uint8>(rand() % 256)
 			});
 			break;
-		case n2e_cmds_t::GET_RND_WORD_RANGE: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_RND_WORD_RANGE\n");
+		case toesp_cmds_t::RND_GET_WORD_RANGE: {
+			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_WORD_RANGE\n");
 			int const min_value = (static_cast<int>(this->rx_buffer.at(2)) << 8) + this->rx_buffer.at(3);
 			int const max_value = (static_cast<int>(this->rx_buffer.at(4)) << 8) + this->rx_buffer.at(5);
 			int const range = max_value - min_value;
 			int const rand_value = min_value + (rand() % range);
 			this->tx_messages.push_back({
 				3,
-				static_cast<uint8>(e2n_cmds_t::RND_WORD),
+				static_cast<uint8>(fromesp_cmds_t::RND_WORD),
 				static_cast<uint8>(rand_value >> 8),
 				static_cast<uint8>(rand_value & 0xff)
 			});
 			break;
 		}
-		case n2e_cmds_t::GET_SERVER_STATUS: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_STATUS\n");
+
+		// SERVER CMDS
+
+		case toesp_cmds_t::SERVER_GET_STATUS: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_GET_STATUS\n");
 			uint8 status;
 			switch (this->active_protocol) {
 			case server_protocol_t::WEBSOCKET:
@@ -342,18 +356,18 @@ void BrokeStudioFirmware::processBufferedMessage() {
 
 			this->tx_messages.push_back({
 				2,
-				static_cast<uint8>(e2n_cmds_t::SERVER_STATUS),
+				static_cast<uint8>(fromesp_cmds_t::SERVER_STATUS),
 				status
 			});
 			break;
 		}
-		case n2e_cmds_t::GET_SERVER_PING:
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_PING\n");
+		case toesp_cmds_t::SERVER_PING:
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_PING\n");
 			if (!this->ping_thread.joinable()) {
 				if (this->server_settings_address.empty()) {
 					this->tx_messages.push_back({
 						1,
-						static_cast<uint8>(e2n_cmds_t::SERVER_PING)
+						static_cast<uint8>(fromesp_cmds_t::SERVER_PING)
 					});
 				}else if (message_size >= 1) {
 					assert(!this->ping_thread.joinable());
@@ -366,8 +380,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 			}
 			break;
-		case n2e_cmds_t::SET_SERVER_PROTOCOL: {
-			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_PROTOCOL\n");
+		case toesp_cmds_t::SERVER_GET_PROTOCOL: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_GET_PROTOCOL\n");
 			if (message_size == 2) {
 				server_protocol_t const requested_protocol = static_cast<server_protocol_t>(this->rx_buffer.at(2));
 				if (requested_protocol > server_protocol_t::UDP) {
@@ -378,17 +392,17 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			}
 			break;
 		}
-		case n2e_cmds_t::GET_SERVER_SETTINGS: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_SETTINGS\n");
+		case toesp_cmds_t::SERVER_GET_SETTINGS: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_GET_SETTINGS\n");
 			if (this->server_settings_address.empty() && this->server_settings_port == 0) {
 				this->tx_messages.push_back({
 					1,
-					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS)
+					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS)
 				});
 			}else {
 				std::deque<uint8> message({
 					static_cast<uint8>(1 + 2 + this->server_settings_address.size()),
-					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS),
+					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS),
 					static_cast<uint8>(this->server_settings_port >> 8),
 					static_cast<uint8>(this->server_settings_port & 0xff)
 				});
@@ -397,18 +411,18 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			}
 			break;
 		}
-		case n2e_cmds_t::GET_SERVER_CONFIG_SETTINGS: {
-			UDBG("RAINBOW BrokeStudioFirmware received message GET_SERVER_CONFIG_SETTINGS\n");
+		case toesp_cmds_t::SERVER_GET_CONFIG_SETTINGS: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_GET_CONFIG_SETTINGS\n");
 			if (this->default_server_settings_address.empty() && this->default_server_settings_port == 0) {
 				this->tx_messages.push_back({
 					1,
-					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS)
+					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS)
 					});
 			}
 			else {
 				std::deque<uint8> message({
 					static_cast<uint8>(1 + 2 + this->default_server_settings_address.size()),
-					static_cast<uint8>(e2n_cmds_t::SERVER_SETTINGS),
+					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS),
 					static_cast<uint8>(this->default_server_settings_port >> 8),
 					static_cast<uint8>(this->default_server_settings_port & 0xff)
 					});
@@ -417,8 +431,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			}
 			break;
 		}
-		case n2e_cmds_t::SET_SERVER_SETTINGS:
-			UDBG("RAINBOW BrokeStudioFirmware received message SET_SERVER_SETTINGS\n");
+		case toesp_cmds_t::SERVER_SET_SETTINGS:
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_SET_SETTINGS\n");
 			if (message_size >= 3) {
 				this->server_settings_port =
 					(static_cast<uint16_t>(this->rx_buffer.at(2)) << 8) +
@@ -427,21 +441,21 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->server_settings_address = std::string(this->rx_buffer.begin()+4, this->rx_buffer.end());
 			}
 			break;
-		case n2e_cmds_t::RESTORE_SERVER_SETTINGS:
-			UDBG("RAINBOW BrokeStudioFirmware received message RESTORE_SERVER_SETTINGS\n");
+		case toesp_cmds_t::SERVER_RESTORE_SETTINGS:
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_RESTORE_SETTINGS\n");
 			this->server_settings_address = this->default_server_settings_address;
 			this->server_settings_port = this->default_server_settings_port;
 			break;
-		case n2e_cmds_t::CONNECT_TO_SERVER:
-			UDBG("RAINBOW BrokeStudioFirmware received message CONNECT_TO_SERVER\n");
+		case toesp_cmds_t::SERVER_CONNECT:
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_CONNECT\n");
 			this->openConnection();
 			break;
-		case n2e_cmds_t::DISCONNECT_FROM_SERVER:
-			UDBG("RAINBOW BrokeStudioFirmware received message DISCONNECT_FROM_SERVER\n");
+		case toesp_cmds_t::SERVER_DISCONNECT:
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_DISCONNECT\n");
 			this->closeConnection();
 			break;
-		case n2e_cmds_t::SEND_MESSAGE_TO_SERVER: {
-			UDBG("RAINBOW BrokeStudioFirmware received message SEND_MESSAGE\n");
+		case toesp_cmds_t::SERVER_SEND_MSG: {
+			UDBG("RAINBOW BrokeStudioFirmware received message SERVER_SEND_MSG\n");
 			uint8 const payload_size = this->rx_buffer.size() - 2;
 			std::deque<uint8>::const_iterator payload_begin = this->rx_buffer.begin() + 2;
 			std::deque<uint8>::const_iterator payload_end = payload_begin + payload_size;
@@ -458,7 +472,89 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			};
 			break;
 		}
-		case n2e_cmds_t::FILE_OPEN:
+
+		// NETWORK CMDS
+		// network commands are not relevant here, so we'll just use test/fake data
+		case toesp_cmds_t::NETWORK_SCAN:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_SCAN\n");
+			if (message_size == 1) {
+				this->tx_messages.push_back({
+					2,
+					static_cast<uint8>(fromesp_cmds_t::NETWORK_COUNT),
+					NUM_FAKE_NETWORKS
+				});
+			}
+			break;
+		case toesp_cmds_t::NETWORK_GET_DETAILS:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_GET_DETAILS\n");
+			if (message_size == 2) {
+				uint8 networkItem = this->rx_buffer.at(2);
+				if (networkItem > NUM_FAKE_NETWORKS-1) networkItem = NUM_FAKE_NETWORKS-1;
+				this->tx_messages.push_back({
+					21,
+					static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+					4, // encryption type
+					0x47, // RSSI
+					0x00,0x00,0x00,0x01, // channel
+					0, // hidden?
+					12, // SSID length
+					'F','C','E','U','X','_','S','S','I','D','_',static_cast<uint8>(networkItem + '0') // SSID
+				});
+			}
+			break;
+		case toesp_cmds_t::NETWORK_GET_REGISTERED:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_GET_REGISTERED\n");
+			if (message_size == 1) {
+				this->tx_messages.push_back({
+					NUM_NETWORKS+1,
+					static_cast<uint8>(fromesp_cmds_t::NETWORK_REGISTERED),
+					static_cast<uint8>((this->networks[0].ssid != "") ? 1 : 0),
+					static_cast<uint8>((this->networks[1].ssid != "") ? 1 : 0),
+					static_cast<uint8>((this->networks[2].ssid != "") ? 1 : 0)
+				});
+			}
+			break;
+		case toesp_cmds_t::NETWORK_GET_REGISTERED_DETAILS:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_GET_REGISTERED_DETAILS\n");
+			if (message_size == 2) {
+				uint8 networkItem = this->rx_buffer.at(2);
+				if (networkItem > NUM_NETWORKS - 1) networkItem = NUM_NETWORKS - 1;
+				std::deque<uint8> message({
+					static_cast<uint8>(2 + this->networks[networkItem].ssid.length() + 1 + this->networks[networkItem].pass.length()),
+					static_cast<uint8>(fromesp_cmds_t::NETWORK_REGISTERED_DETAILS),
+					static_cast<uint8>(this->networks[networkItem].ssid.length())
+				});
+				message.insert(message.end(), this->networks[networkItem].ssid.begin(), this->networks[networkItem].ssid.end());
+				message.insert(message.end(), this->networks[networkItem].pass.length());
+				message.insert(message.end(), this->networks[networkItem].pass.begin(), this->networks[networkItem].pass.end());
+				this->tx_messages.push_back(message);
+			}
+			break;
+		case toesp_cmds_t::NETWORK_REGISTER:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_REGISTER\n");
+			if (message_size > 6) {
+				uint8 const networkItem = this->rx_buffer.at(2);
+				if (networkItem > NUM_NETWORKS - 1) break;
+				uint8 SSIDlength = std::min(SSID_MAX_LENGTH, this->rx_buffer.at(3));
+				uint8 PASSlength = std::min(PASS_MAX_LENGTH, this->rx_buffer.at(4 + SSIDlength));
+				this->networks[networkItem].ssid = std::string(this->rx_buffer.begin() + 4, this->rx_buffer.begin() + 4 + SSIDlength);
+				this->networks[networkItem].pass = std::string(this->rx_buffer.begin() + 4 + SSIDlength + 1, this->rx_buffer.begin() + 4 + SSIDlength + 1 + PASSlength);
+
+			}
+			break;
+		case toesp_cmds_t::NETWORK_UNREGISTER:
+			UDBG("RAINBOW BrokeStudioFirmware received message NETWORK_UNREGISTER\n");
+			if (message_size == 2) {
+				uint8 const networkItem = this->rx_buffer.at(2);
+				if (networkItem > NUM_NETWORKS - 1) break;
+				this->networks[networkItem].ssid = "";
+				this->networks[networkItem].pass = "";
+			}
+			break;
+
+		// FILE CMDS
+
+		case toesp_cmds_t::FILE_OPEN:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_OPEN\n");
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
@@ -472,12 +568,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_CLOSE:
+		case toesp_cmds_t::FILE_CLOSE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_CLOSE\n");
 			this->working_file = NO_WORKING_FILE;
 			this->saveFiles();
 			break;
-		case n2e_cmds_t::FILE_EXISTS:
+		case toesp_cmds_t::FILE_EXISTS:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_EXISTS\n");
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
@@ -485,13 +581,13 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
 					this->tx_messages.push_back({
 						2,
-						static_cast<uint8>(e2n_cmds_t::FILE_EXISTS),
+						static_cast<uint8>(fromesp_cmds_t::FILE_EXISTS),
 						static_cast<uint8>(this->file_exists[path][file] ? 1 : 0)
 					});
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_DELETE:
+		case toesp_cmds_t::FILE_DELETE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_DELETE\n");
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
@@ -503,7 +599,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						this->file_exists[path][file] = false;
 						this->tx_messages.push_back({
 							2,
-							static_cast<uint8>(e2n_cmds_t::FILE_DELETE),
+							static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 							0
 						});
 						this->saveFiles();
@@ -511,7 +607,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						// File does not exist
 						this->tx_messages.push_back({
 							2,
-							static_cast<uint8>(e2n_cmds_t::FILE_DELETE),
+							static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 							2
 						});
 					}
@@ -519,13 +615,13 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					// Error while deleting the file
 					this->tx_messages.push_back({
 						2,
-						static_cast<uint8>(e2n_cmds_t::FILE_DELETE),
+						static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 						1
 					});
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_SET_CUR:
+		case toesp_cmds_t::FILE_SET_CUR:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_SET_CUR\n");
 			if (2 <= message_size && message_size <= 5) {
 				this->file_offset = this->rx_buffer[2];
@@ -534,7 +630,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->file_offset += static_cast<uint32>(message_size >= 5 ? this->rx_buffer[5] : 0) << 24;
 			}
 			break;
-		case n2e_cmds_t::FILE_READ:
+		case toesp_cmds_t::FILE_READ:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_READ\n");
 			if (message_size == 2) {
 				if (this->working_file != NO_WORKING_FILE) {
@@ -547,31 +643,31 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						this->file_offset = this->files[this->working_path][this->working_file].size();
 					}
 				}else {
-					this->tx_messages.push_back({2, static_cast<uint8>(e2n_cmds_t::FILE_DATA), 0});
+					this->tx_messages.push_back({2, static_cast<uint8>(fromesp_cmds_t::FILE_DATA), 0});
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_WRITE:
+		case toesp_cmds_t::FILE_WRITE:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_WRITE\n");
 			if (message_size >= 3 && this->working_file != NO_WORKING_FILE) {
 				this->writeFile(this->working_path, this->working_file, this->file_offset, this->rx_buffer.begin() + 2, this->rx_buffer.begin() + message_size + 1);
 				this->file_offset += message_size - 1;
 			}
 			break;
-		case n2e_cmds_t::FILE_APPEND:
+		case toesp_cmds_t::FILE_APPEND:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_APPEND\n");
 			if (message_size >= 3 && this->working_file != NO_WORKING_FILE) {
 				this->writeFile(this->working_path, this->working_file, this->files[working_path][working_file].size(), this->rx_buffer.begin() + 2, this->rx_buffer.begin() + message_size + 1);
 			}
 			break;
-		case n2e_cmds_t::FILE_COUNT:
+		case toesp_cmds_t::FILE_COUNT:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_COUNT\n");
 			if (message_size == 2) {
 				uint8 const path = this->rx_buffer[2];
 				if (path >= NUM_FILE_PATHS) {
 					this->tx_messages.push_back({
 						2,
-						static_cast<uint8>(e2n_cmds_t::FILE_COUNT),
+						static_cast<uint8>(fromesp_cmds_t::FILE_COUNT),
 						0
 					});
 				}else {
@@ -583,14 +679,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					}
 					this->tx_messages.push_back({
 						2,
-						static_cast<uint8>(e2n_cmds_t::FILE_COUNT),
+						static_cast<uint8>(fromesp_cmds_t::FILE_COUNT),
 						nb_files
 					});
 					UDBG("%u files found in path %u\n", nb_files, path);
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_GET_LIST:
+		case toesp_cmds_t::FILE_GET_LIST:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
 			if (message_size >= 2) {
 				std::vector<uint8> existing_files;
@@ -617,14 +713,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 				std::deque<uint8> message({
 					static_cast<uint8>(existing_files.size() + 2),
-					static_cast<uint8>(e2n_cmds_t::FILE_LIST),
+					static_cast<uint8>(fromesp_cmds_t::FILE_LIST),
 					static_cast<uint8>(existing_files.size())
 				});
 				message.insert(message.end(), existing_files.begin(), existing_files.end());
 				this->tx_messages.push_back(message);
 			}
 			break;
-		case n2e_cmds_t::FILE_GET_FREE_ID:
+		case toesp_cmds_t::FILE_GET_FREE_ID:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_FREE_ID\n");
 			if (message_size == 2) {
 				uint8 const file_id = this->getFreeFileId(this->rx_buffer.at(2));
@@ -632,19 +728,19 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					// Free file ID found
 					this->tx_messages.push_back({
 						2,
-						static_cast<uint8>(e2n_cmds_t::FILE_ID),
+						static_cast<uint8>(fromesp_cmds_t::FILE_ID),
 						file_id,
 					});
 				}else {
 					// Free file ID not found
 					this->tx_messages.push_back({
 						1,
-						static_cast<uint8>(e2n_cmds_t::FILE_ID)
+						static_cast<uint8>(fromesp_cmds_t::FILE_ID)
 					});
 				}
 			}
 			break;
-		case n2e_cmds_t::FILE_GET_INFO:
+		case toesp_cmds_t::FILE_GET_INFO:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_INFO\n");
 			if (message_size == 3) {
 				uint8 const path = this->rx_buffer.at(2);
@@ -659,7 +755,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					// Send info
 					this->tx_messages.push_back({
 						9,
-						static_cast<uint8>(e2n_cmds_t::FILE_INFO),
+						static_cast<uint8>(fromesp_cmds_t::FILE_INFO),
 
 						static_cast<uint8>((file_crc32 >> 24) & 0xff),
 						static_cast<uint8>((file_crc32 >> 16) & 0xff),
@@ -675,7 +771,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					// File not found or path/file out of bounds
 					this->tx_messages.push_back({
 						1,
-						static_cast<uint8>(e2n_cmds_t::FILE_INFO)
+						static_cast<uint8>(fromesp_cmds_t::FILE_INFO)
 					});
 				}
 			}
@@ -709,7 +805,7 @@ void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offse
 	// Write response
 	std::deque<uint8> message({
 		static_cast<uint8>(data_size + 2),
-		static_cast<uint8>(e2n_cmds_t::FILE_DATA),
+		static_cast<uint8>(fromesp_cmds_t::FILE_DATA),
 		static_cast<uint8>(data_size)
 	});
 	message.insert(message.end(), data_begin, data_end);
@@ -874,7 +970,7 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 				UDBG("\n");
 				std::deque<uint8> message({
 					static_cast<uint8>(msg_len+1),
-					static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER)
+					static_cast<uint8>(fromesp_cmds_t::MESSAGE_FROM_SERVER)
 				});
 				message.insert(message.end(), data.begin(), data.end());
 				this->tx_messages.push_back(message);
@@ -919,7 +1015,7 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 					UDBG("\n");
 					std::deque<uint8> message({
 						static_cast<uint8>(msg_len+1),
-						static_cast<uint8>(e2n_cmds_t::MESSAGE_FROM_SERVER)
+						static_cast<uint8>(fromesp_cmds_t::MESSAGE_FROM_SERVER)
 					});
 					message.insert(message.end(), data.begin(), data.begin() + msg_len);
 					this->tx_messages.push_back(message);
@@ -1060,7 +1156,7 @@ void BrokeStudioFirmware::receivePingResult() {
 
 	this->tx_messages.push_back({
 		5,
-		static_cast<uint8>(e2n_cmds_t::SERVER_PING),
+		static_cast<uint8>(fromesp_cmds_t::SERVER_PING),
 		this->ping_min,
 		this->ping_max,
 		this->ping_avg,

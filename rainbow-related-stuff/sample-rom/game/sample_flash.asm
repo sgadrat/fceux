@@ -77,7 +77,7 @@ sample_flash_flash_chr:
 		lda #11   ; Message length
 		sta $5000 ;
 
-		lda #TOESP_MSG_SEND_MESSAGE_TO_SERVER ; Message type - message for the server
+		lda #TOESP_MSG_SERVER_SEND_MESSAGE    ; Message type - message for the server
 		sta $5000                             ;
 
 		lda #$75  ;
@@ -277,7 +277,7 @@ sample_flash_flash_prg:
 		lda #11   ; Message length
 		sta $5000 ;
 
-		lda #TOESP_MSG_SEND_MESSAGE_TO_SERVER ; Message type - message for the server
+		lda #TOESP_MSG_SERVER_SEND_MESSAGE    ; Message type - message for the server
 		sta $5000                             ;
 
 		lda #$75  ;
