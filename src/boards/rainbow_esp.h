@@ -63,7 +63,7 @@ private:
 		// SERVER CMDS
 		SERVER_GET_STATUS,
 		SERVER_PING,
-		SERVER_GET_PROTOCOL,
+		SERVER_SET_PROTOCOL,
 		SERVER_GET_SETTINGS,
 		SERVER_GET_CONFIG_SETTINGS,
 		SERVER_SET_SETTINGS,
@@ -93,6 +93,7 @@ private:
 		FILE_GET_LIST,
 		FILE_GET_FREE_ID,
 		FILE_GET_INFO,
+		FILE_DOWNLOAD,
 	};
 
 	// Defined message types from ESP to CPU
@@ -126,12 +127,33 @@ private:
 		FILE_COUNT,
 		FILE_ID,
 		FILE_INFO,
+		FILE_DOWNLOAD,
 	};
 
 	enum class server_protocol_t : uint8 {
 		WEBSOCKET,
+		WEBSOCKET_SECURED,
+		TCP,
+		TCP_SECURED,
 		UDP,
 	};
+
+	enum class file_delete_results_t : uint8
+	{
+		SUCCESS,
+		ERROR_WHILE_DELETING_FILE,
+		FILE_NOT_FOUND,
+		INVALID_PATH_OR_FILE,
+	};
+
+	enum class file_download_results_t : uint8
+	{
+		SUCCESS,
+		ERROR_WHILE_DELETING_FILE,
+		DOWNLOAD_FAILED,
+		INVALID_PATH_OR_FILE,
+	};
+
 
 	void processBufferedMessage();
 	void readFile(uint8 path, uint8 file, uint8 n, uint32 offset);
