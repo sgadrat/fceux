@@ -106,7 +106,8 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 
 	// Start web server
 	this->httpd_run = true;
-	char const * const httpd_port = "8080";
+	char const* httpd_port = ::getenv("RAINBOW_WWW_PORT");
+	if (httpd_port == nullptr) httpd_port = "8080";
 	mg_mgr_init(&this->mgr, reinterpret_cast<void*>(this));
 	UDBG("Starting web server on port %s\n", httpd_port);
 	this->nc = mg_bind(&this->mgr, httpd_port, BrokeStudioFirmware::httpdEvent);
@@ -1237,9 +1238,36 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 		UDBG("http request event \n");
 		struct http_message *hm = (struct http_message *) ev_data;
 		UDBG("  uri: %.*s\n", hm->uri.len, hm->uri.p);
-		if (std::string("/api/esp/debugconfig") == std::string(hm->uri.p, hm->uri.len)) {
+		if (std::string("/api/config") == std::string(hm->uri.p, hm->uri.len)) {
+			if (mg_vcasecmp(&hm->method, "GET") == 0) {
+				mg_send_response_line(nc, 200, "Content-Type: application/json\r\nConnection: close\r\n");
+				mg_printf(nc, "{\"server\":{\"host\":\"%s\", \"port\":\"%u\"}}\n", self->server_settings_address.c_str(), self->server_settings_port);
+				nc->flags |= MG_F_SEND_AND_CLOSE;
+			}
+		}
+		else if (std::string("/api/config/update") == std::string(hm->uri.p, hm->uri.len)) {
 			if (mg_vcasecmp(&hm->method, "POST") == 0) {
-
+				char var_name[100], file_name[100];
+				const char *chunk;
+				size_t chunk_len, n1, n2;
+				n1 = n2 = 0;
+				while ((n2 = mg_parse_multipart(hm->body.p + n1, hm->body.len - n1, var_name, sizeof(var_name), file_name, sizeof(file_name), &chunk, &chunk_len)) > 0) {
+					if (strcmp(var_name, "server_host") == 0) {
+						self->server_settings_address = std::string(chunk, (int)chunk_len);
+					}
+					if (strcmp(var_name, "server_port") == 0) {
+						self->server_settings_port = std::atoi(chunk);
+					}
+					n1 += n2;
+				}
+				send_message(200, "{\"success\":\"true\"}\n", "application/json");
+			}
+			else {
+				send_generic_error();
+			}
+		}
+		else if (std::string("/api/esp/debugconfig") == std::string(hm->uri.p, hm->uri.len)) {
+			if (mg_vcasecmp(&hm->method, "POST") == 0) {
 				char var_name[100], file_name[100];
 				const char *chunk;
 				size_t chunk_len, n1, n2;
