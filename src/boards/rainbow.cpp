@@ -126,8 +126,9 @@ enum CHIP_TYPE
 // ESP interface
 
 static EspFirmware *esp = NULL;
-static bool esp_enable = true;
-static bool irq_enable = true;
+static bool esp_enable;
+static bool irq_enable;
+static uint8 last_byte_read;
 
 static void RainbowEspMapIrq(int32) {
 	if (irq_enable)
@@ -287,7 +288,11 @@ static DECLFR(RainbowRead) {
 	switch (A)
 	{
 	case 0x5000:
-		return esp->tx();
+	{
+		if (esp_enable) last_byte_read = esp->tx();
+		else FCEU_printf("RAINBOW warning: $5001.0 is not set\n");
+		return last_byte_read;
+	}
 	case 0x5001:
 	{
 		uint8 esp_rts_flag = esp->getGpio4() ? 0x80 : 0x00;
@@ -308,7 +313,10 @@ static DECLFR(RainbowRead) {
 static DECLFW(RainbowWrite) {
 	switch (A)
 	{
-	case 0x5000: esp->rx(V); break;
+	case 0x5000:
+		if(esp_enable) esp->rx(V);
+		else FCEU_printf("RAINBOW warning: $5001.0 is not set\n");
+		break;
 	case 0x5001:
 		esp_enable = V & 0x01;
 		irq_enable = V & 0x40;
@@ -695,8 +703,9 @@ static void RainbowPower(void) {
 
 	// ESP firmware
 	esp = new BrokeStudioFirmware;
-	esp_enable = true;
-	irq_enable = true;
+	esp_enable = false;
+	irq_enable = false;
+	last_byte_read = 0x00;
 }
 
 static void RainbowClose(void)
