@@ -167,6 +167,8 @@ private:
 	void sendMessageToServer(I begin, I end);
 	template<class I>
 	void sendUdpDatagramToServer(I begin, I end);
+	template<class I>
+	void sendTcpDataToServer(I begin, I end);
 	void receiveDataFromServer();
 
 	void closeConnection();
@@ -174,6 +176,9 @@ private:
 
 	void pingRequest(uint8 n);
 	void receivePingResult();
+
+	std::pair<bool, sockaddr_in> resolve_server_address();
+	static std::deque<uint8> read_socket(int socket);
 
 	static void httpdEvent(mg_connection *nc, int ev, void *ev_data);
 
@@ -210,6 +215,8 @@ private:
 
 	int udp_socket = -1;
 	sockaddr_in server_addr;
+
+	int tcp_socket = -1;
 
 	mg_mgr mgr;
 	mg_connection *nc = nullptr;

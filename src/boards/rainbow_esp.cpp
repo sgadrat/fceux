@@ -8,9 +8,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
-#include <regex>
 #include <map>
+#include <regex>
 #include <sstream>
+#include <stdexcept>
+#include <unistd.h>
 
 #if defined(_WIN32) || defined(WIN32)
 
@@ -350,8 +352,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				status = (this->socket != nullptr); // Server connection is ok if we succeed to open it
 				break;
 			case server_protocol_t::TCP:
+				//TODO actually check connection state
+				status = (this->tcp_socket != -1); // Considere server connection ok if we created a socket
+				break;
 			case server_protocol_t::TCP_SECURED:
-				// TODO...
+				//TODO
+				status = 0;
 				break;
 			case server_protocol_t::UDP:
 				status = (this->udp_socket != -1); // Considere server connection ok if we created a socket
@@ -468,7 +474,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 
 			switch (this->active_protocol) {
 			case server_protocol_t::WEBSOCKET:
+			case server_protocol_t::WEBSOCKET_SECURED:
 				this->sendMessageToServer(payload_begin, payload_end);
+				break;
+			case server_protocol_t::TCP:
+				this->sendTcpDataToServer(payload_begin, payload_end);
+				break;
+			case server_protocol_t::TCP_SECURED:
+				//TODO
 				break;
 			case server_protocol_t::UDP:
 				this->sendUdpDatagramToServer(payload_begin, payload_end);
@@ -1006,6 +1019,89 @@ void BrokeStudioFirmware::sendUdpDatagramToServer(I begin, I end) {
 	}
 }
 
+template<class I>
+void BrokeStudioFirmware::sendTcpDataToServer(I begin, I end) {
+#if RAINBOW_DEBUG >= 1
+	FCEU_printf("RAINBOW %lu tcp data to send", wall_clock_milli());
+#	if RAINBOW_DEBUG >= 2
+	FCEU_printf(": ");
+	for (I cur = begin; cur < end; ++cur) {
+		FCEU_printf("%02x ", *cur);
+	}
+#	endif
+	FCEU_printf("\n");
+#endif
+
+	if (this->tcp_socket != -1) {
+		size_t message_size = end - begin;
+		std::vector<uint8> aggregated;
+		aggregated.reserve(message_size);
+		aggregated.insert(aggregated.end(), begin, end);
+
+		ssize_t n = ::send(
+			this->tcp_socket,
+			cast_network_payload(aggregated.data()), aggregated.size(),
+			0
+		);
+		if (n == -1) {
+			UDBG("RAINBOW TCP send failed: %s\n", strerror(errno));
+		}else if (n != message_size) {
+			UDBG("RAINBOW TCP sent partial message\n");
+		}
+	}
+}
+
+std::deque<uint8> BrokeStudioFirmware::read_socket(int socket) {
+	fd_set rfds;
+	FD_ZERO(&rfds);
+	FD_SET(socket, &rfds);
+
+	timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	int n_readable = ::select(socket+1, &rfds, NULL, NULL, &tv);
+	if (n_readable == -1) {
+		UDBG("RAINBOW failed to check sockets for data: %s\n", strerror(errno));
+	}else if (n_readable > 0) {
+		if (FD_ISSET(socket, &rfds)) {
+			size_t const MAX_MSG_SIZE = 254;
+			std::vector<uint8> data;
+			data.resize(MAX_MSG_SIZE);
+
+			sockaddr_in addr_from;
+			socklen_t addr_from_len = sizeof(addr_from);
+			ssize_t msg_len = ::recvfrom(
+				socket, cast_network_payload(data.data()), MAX_MSG_SIZE, 0,
+				reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
+			);
+
+			if (msg_len == -1) {
+				UDBG("RAINBOW failed to read socket: %s\n", strerror(errno));
+			}else if (msg_len <= MAX_MSG_SIZE) {
+				UDBG("RAINBOW %lu received message of size %zd", wall_clock_milli(), msg_len);
+#if RAINBOW_DEBUG >= 2
+				UDBG_FLOOD(": ");
+				for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
+					UDBG_FLOOD("%02x", *it);
+				}
+#endif
+				UDBG("\n");
+				std::deque<uint8> message({
+					static_cast<uint8>(msg_len+1),
+					static_cast<uint8>(fromesp_cmds_t::MESSAGE_FROM_SERVER)
+				});
+				message.insert(message.end(), data.begin(), data.begin() + msg_len);
+				return message;
+			}else {
+				UDBG("RAINBOW received a bigger message than expected\n");
+				//TODO handle it like Rainbow's ESP handle it
+			}
+		}
+	}
+	return std::deque<uint8>();
+}
+
 void BrokeStudioFirmware::receiveDataFromServer() {
 	// Websocket
 	if (this->socket != nullptr) {
@@ -1031,84 +1127,53 @@ void BrokeStudioFirmware::receiveDataFromServer() {
 		});
 	}
 
+	// TCP
+	if (this->tcp_socket != -1) {
+		std::deque<uint8> message = read_socket(this->tcp_socket);
+		if (!message.empty()) {
+			this->tx_messages.push_back(message);
+		}
+	}
+
 	// UDP
 	if (this->udp_socket != -1) {
-		fd_set rfds;
-		FD_ZERO(&rfds);
-		FD_SET(this->udp_socket, &rfds);
-
-		timeval tv;
-		tv.tv_sec = 0;
-		tv.tv_usec = 0;
-
-		int n_readable = select(this->udp_socket+1, &rfds, NULL, NULL, &tv);
-		if (n_readable == -1) {
-			UDBG("RAINBOW failed to check sockets for data: %s\n", strerror(errno));
-		}else if (n_readable > 0) {
-			if (FD_ISSET(this->udp_socket, &rfds)) {
-				size_t const MAX_DGRAM_SIZE = 256;
-				std::vector<uint8> data;
-				data.resize(MAX_DGRAM_SIZE);
-				sockaddr_in addr_from;
-				socklen_t addr_from_len = sizeof(addr_from);
-				ssize_t msg_len = recvfrom(
-					this->udp_socket, cast_network_payload(data.data()), MAX_DGRAM_SIZE, 0,
-					reinterpret_cast<sockaddr*>(&addr_from), &addr_from_len
-				);
-				if (msg_len == -1) {
-					UDBG("RAINBOW failed to read UDP socket: %s\n", strerror(errno));
-				}else if (msg_len < 256) {
-					UDBG("RAINBOW %lu received UDP datagram of size %zd", wall_clock_milli(), msg_len);
-#if RAINBOW_DEBUG >= 2
-					UDBG_FLOOD(": ");
-					for (auto it = data.begin(); it != data.begin() + msg_len; ++it) {
-						UDBG_FLOOD("%02x", *it);
-					}
-#endif
-					UDBG("\n");
-					std::deque<uint8> message({
-						static_cast<uint8>(msg_len+1),
-						static_cast<uint8>(fromesp_cmds_t::MESSAGE_FROM_SERVER)
-					});
-					message.insert(message.end(), data.begin(), data.begin() + msg_len);
-					this->tx_messages.push_back(message);
-				}else {
-					UDBG("RAINBOW received a bigger than expected UDP datagram\n");
-					//TODO handle it like Rainbow's ESP handle it
-				}
-			}
+		std::deque<uint8> message = read_socket(this->udp_socket);
+		if (!message.empty()) {
+			this->tx_messages.push_back(message);
 		}
 	}
 }
 
 void BrokeStudioFirmware::closeConnection() {
 	//TODO close UDP socket
-	//TODO close TCP connection
 
-	// Do nothing if connection is already closed
-	if (this->socket == nullptr) {
-		return;
+	// Close TCP socket
+	if (this->tcp_socket != - 1) {
+		::close(this->tcp_socket);
 	}
 
-	// Gently ask for connection closing
-	if (this->socket->getReadyState() == WebSocket::OPEN) {
-		this->socket->close();
-	}
-
-	// Start a thread that waits for the connection to be closed, before deleting the socket
-	if (this->socket_close_thread.joinable()) {
-		this->socket_close_thread.join();
-	}
-	WebSocket::pointer ws = this->socket;
-	this->socket_close_thread = std::thread([ws] {
-		while (ws->getReadyState() != WebSocket::CLOSED) {
-			ws->poll(5);
+	// Close WebSocket
+	if (this->socket != nullptr) {
+		// Gently ask for connection closing
+		if (this->socket->getReadyState() == WebSocket::OPEN) {
+			this->socket->close();
 		}
-		delete ws;
-	});
 
-	// Forget about this connection
-	this->socket = nullptr;
+		// Start a thread that waits for the connection to be closed, before deleting the socket
+		if (this->socket_close_thread.joinable()) {
+			this->socket_close_thread.join();
+		}
+		WebSocket::pointer ws = this->socket;
+		this->socket_close_thread = std::thread([ws] {
+			while (ws->getReadyState() != WebSocket::CLOSED) {
+				ws->poll(5);
+			}
+			delete ws;
+		});
+
+		// Forget about this connection
+		this->socket = nullptr;
+	}
 }
 
 void BrokeStudioFirmware::openConnection() {
@@ -1127,19 +1192,35 @@ void BrokeStudioFirmware::openConnection() {
 		}else {
 			this->socket = ws;
 		}
-	}else if ((this->active_protocol == server_protocol_t::TCP) || (this->active_protocol == server_protocol_t::TCP_SECURED)) {
-		// TODO...
-	}else if (this->active_protocol == server_protocol_t::UDP) {
-		// Init UDP socket and store parsed address
-		hostent *he = gethostbyname(this->server_settings_address.c_str());
-		if (he == NULL) {
-			UDBG("RAINBOW unable to resolve UDP server's hostname\n");
+	}else if (this->active_protocol == server_protocol_t::TCP) {
+		// Resolve server's hostname
+		std::pair<bool, sockaddr_in> server_addr = this->resolve_server_address();
+		if (!server_addr.first) {
 			return;
 		}
-		bzero(reinterpret_cast<void*>(&this->server_addr), sizeof(this->server_addr));
-		this->server_addr.sin_family = AF_INET;
-		this->server_addr.sin_port = htons(this->server_settings_port);
-		this->server_addr.sin_addr = *((in_addr*)he->h_addr);
+
+		// Create socket
+		this->tcp_socket = ::socket(AF_INET, SOCK_STREAM, 0);
+		if (this->tcp_socket == -1) {
+			UDBG("RAINBOW unable to create TCP socket: %s\n", strerror(errno));
+		}
+
+		// Connect to server
+		int connect_res = ::connect(this->tcp_socket, reinterpret_cast<sockaddr*>(&server_addr.second), sizeof(sockaddr));
+		if (connect_res == -1) {
+			UDBG("RAINBOW unable to connect to TCP server: %s\n", strerror(errno));
+			this->tcp_socket = -1;
+		}
+	}else if (this->active_protocol == server_protocol_t::TCP_SECURED) {
+		//TODO
+		UDBG("RAINBOW TCP_SECURED not yet implemented");
+	}else if (this->active_protocol == server_protocol_t::UDP) {
+		// Init UDP socket and store parsed address
+		std::pair<bool, sockaddr_in> server_addr = this->resolve_server_address();
+		if (!server_addr.first) {
+			return;
+		}
+		this->server_addr = server_addr.second;
 
 		this->udp_socket = ::socket(AF_INET, SOCK_DGRAM, 0);
 		if (this->udp_socket == -1) {
@@ -1221,6 +1302,23 @@ void BrokeStudioFirmware::receivePingResult() {
 		this->ping_avg,
 		this->ping_lost
 	});
+}
+
+std::pair<bool, sockaddr_in> BrokeStudioFirmware::resolve_server_address() {
+	sockaddr_in addr;
+
+	hostent *he = gethostbyname(this->server_settings_address.c_str());
+	if (he == NULL) {
+		UDBG("RAINBOW unable to resolve server's hostname\n");
+		return std::make_pair(false, addr);
+	}
+
+	bzero(reinterpret_cast<void*>(&addr), sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(this->server_settings_port);
+	addr.sin_addr = *((in_addr*)he->h_addr);
+
+	return std::make_pair(true, addr);
 }
 
 void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
