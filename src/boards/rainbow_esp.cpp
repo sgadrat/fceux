@@ -12,7 +12,6 @@
 #include <regex>
 #include <sstream>
 #include <stdexcept>
-#include <unistd.h>
 
 #if defined(_WIN32) || defined(WIN32)
 
@@ -22,6 +21,7 @@
 typedef SSIZE_T ssize_t;
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
 #define cast_network_payload(x) reinterpret_cast<char*>(x)
+#define close_sock(x) ::closesocket(x)
 
 #else
 
@@ -29,9 +29,11 @@ typedef SSIZE_T ssize_t;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/udp.h>
+#include <unistd.h>
 
 // Compatibility hacks
 #define cast_network_payload(x) reinterpret_cast<void*>(x)
+#define close_sock(x) ::close(x)
 
 #endif
 
@@ -1149,7 +1151,7 @@ void BrokeStudioFirmware::closeConnection() {
 
 	// Close TCP socket
 	if (this->tcp_socket != - 1) {
-		::close(this->tcp_socket);
+		close_sock(this->tcp_socket);
 	}
 
 	// Close WebSocket
