@@ -250,7 +250,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case toesp_cmds_t::DEBUG_LOG:
 			UDBG("RAINBOW DEBUG/LOG\n");
-			if (this->debug_config & 1) {
+			if (RAINBOW_DEBUG > 0 || (this->debug_config & 1)) {
 				for (std::deque<uint8>::const_iterator cur = this->rx_buffer.begin() + 2; cur < this->rx_buffer.end(); ++cur) {
 					FCEU_printf("%02x ", *cur);
 				}
