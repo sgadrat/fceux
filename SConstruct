@@ -90,6 +90,7 @@ if env['PLATFORM'] == 'win32':
   env.Append(LIBS = ["rpcrt4", "comctl32", "vfw32", "winmm", "ws2_32", "comdlg32", "ole32", "gdi32", "htmlhelp"])
 else:
   conf = Configure(env)
+  env.ParseConfig('pkg-config libcurl --cflags --libs')
   # If libdw is available, compile in backward-cpp support
   if conf.CheckLib('dw'):
     conf.env.Append(CCFLAGS = "-DBACKWARD_HAS_DW=1")

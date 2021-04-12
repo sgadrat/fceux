@@ -148,6 +148,9 @@ BrokeStudioFirmware::BrokeStudioFirmware() {
 
 	// Mark ping result as useless
 	this->ping_ready = false;
+
+	// Initialize download system
+	this->initDownload();
 }
 
 BrokeStudioFirmware::~BrokeStudioFirmware() {
@@ -167,6 +170,8 @@ BrokeStudioFirmware::~BrokeStudioFirmware() {
 	if (this->httpd_thread.joinable()) {
 		this->httpd_thread.join();
 	}
+
+	this->cleanupDownload();
 }
 
 void BrokeStudioFirmware::rx(uint8 v) {
@@ -800,16 +805,20 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_DOWNLOAD:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_DOWNLOAD\n");
 			if (message_size > 3) {
+				// Parse
 				uint8 const path = this->rx_buffer.at(2);
 				uint8 const file = this->rx_buffer.at(3);
+				std::string const url(this->rx_buffer.begin() + 4, this->rx_buffer.end());
+
+				// Delete existing file
 				if (path < NUM_FILE_PATHS && file < NUM_FILES) {
 					if (this->file_exists[path][file]) {
 						// File exists, let's delete it
 						this->files[path][file].clear();
 						this->file_exists[path][file] = false;
+						this->saveFiles();
 					}
-				}
-				else {
+				}else {
 					// Invalide path / file
 					this->tx_messages.push_back({
 						2,
@@ -818,32 +827,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					});
 					break;
 				}
-				// TODO... download file
-				/*
-				if(downloadFile(url, path, filename) {
-					this->tx_messages.push_back({
-						2,
-						static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
-						static_cast<uint8>(file_download_results_t::SUCCESS)
-					});
-				}else {
-					this->tx_messages.push_back({
-						2,
-						static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
-						static_cast<uint8>(file_download_results_t::DOWNLOAD_FAILED)
-					});
-				}
-				*/
+
+				// Download new file
+				this->downloadFile(url, path, file);
 			}
 			break;
-
-
-
-
-
-
-
-
 		default:
 			UDBG("RAINBOW BrokeStudioFirmware received unknown message %02x\n", this->rx_buffer.at(1));
 			break;
@@ -1705,4 +1693,69 @@ void BrokeStudioFirmware::httpdEvent(mg_connection *nc, int ev, void *ev_data) {
 			}
 		}
 	}
+}
+
+namespace {
+size_t download_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata) {
+	std::vector<uint8>* data = reinterpret_cast<std::vector<uint8>*>(userdata);
+	data->insert(data->end(), reinterpret_cast<uint8*>(ptr), reinterpret_cast<uint8*>(ptr + size * nmemb));
+	return size * nmemb;
+}
+}
+
+void BrokeStudioFirmware::initDownload() {
+	this->curl_handle = curl_easy_init();
+	curl_easy_setopt(this->curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(this->curl_handle, CURLOPT_WRITEFUNCTION, &download_write_callback);
+    curl_easy_setopt(this->curl_handle, CURLOPT_FAILONERROR, 1L);
+}
+
+void BrokeStudioFirmware::downloadFile(std::string const& url, uint8 path, uint8 file) {
+	UDBG("RAINBOW BrokeStudioFirmware download %s -> (%u,%u)\n", url.c_str(), (unsigned int)path, (unsigned int)file);
+	//TODO asynchronous download using curl_multi_* (and maybe a thread, or regular ticks on rx/tx/getGpio4)
+
+	// Directly fail if the curl handle was not properly initialized
+	if (this->curl_handle == nullptr) {
+		UDBG("RAINBOW BrokeStudioFirmware download failed: no handle\n");
+		this->tx_messages.push_back({
+			2,
+			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
+			static_cast<uint8>(file_download_results_t::DOWNLOAD_FAILED)
+		});
+		return;
+	}
+
+	// Download file
+	std::vector<uint8> data;
+	curl_easy_setopt(this->curl_handle, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(this->curl_handle, CURLOPT_WRITEDATA, (void*)&data);
+	CURLcode res = curl_easy_perform(this->curl_handle);
+
+	// Store data and write result message
+	if (res != CURLE_OK) {
+		UDBG("RAINBOW BrokeStudioFirmware download failed\n");
+		this->tx_messages.push_back({
+			2,
+			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
+			static_cast<uint8>(file_download_results_t::DOWNLOAD_FAILED)
+		});
+	}else {
+		UDBG("RAINBOW BrokeStudioFirmware download success\n");
+		// Store data
+		this->files[path][file] = data;
+		this->file_exists[path][file] = true;
+		this->saveFiles();
+
+		// Write result message
+		this->tx_messages.push_back({
+			2,
+			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
+			static_cast<uint8>(file_download_results_t::SUCCESS)
+		});
+	}
+}
+
+void BrokeStudioFirmware::cleanupDownload() {
+	curl_easy_cleanup(this->curl_handle);
+	this->curl_handle = nullptr;
 }

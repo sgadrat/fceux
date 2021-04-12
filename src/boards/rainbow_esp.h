@@ -6,6 +6,8 @@
 #include "easywsclient.hpp"
 #include "mongoose.h"
 
+#include <curl/curl.h>
+
 #include <array>
 #include <atomic>
 #include <deque>
@@ -182,6 +184,10 @@ private:
 
 	static void httpdEvent(mg_connection *nc, int ev, void *ev_data);
 
+	void initDownload();
+	void downloadFile(std::string const& url, uint8_t path, uint8_t file);
+	void cleanupDownload();
+
 private:
 	std::deque<uint8> rx_buffer;
 	std::deque<uint8> tx_buffer;
@@ -226,6 +232,8 @@ private:
 	bool msg_first_byte = true;
 	uint8 msg_length = 0;
 	uint8 last_byte_read = 0;
+
+	CURL* curl_handle = nullptr;
 };
 
 #endif
