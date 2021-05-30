@@ -248,7 +248,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case toesp_cmds_t::DEBUG_SET_LEVEL:
 			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_LEVEL\n");
-			if (message_size == 3) {
+			if (message_size == 2) {
 				this->debug_config = this->rx_buffer.at(2);
 			}
 			FCEU_printf("DEBUG LEVEL SET TO: %u\n", this->debug_config);
