@@ -726,6 +726,7 @@ static BMAPPINGLocal bmap[] = {
 	{"RAINBOW NROM",       3840, RAINBOW_NROM_Init},
 	{"RAINBOW512",         3870, RAINBOW512_Init},
 	{"RAINBOW",            3871, RAINBOW_Init},
+	{"RAINBOW13",          3872, RAINBOW13_Init },
 	{"NESNET",             3841, NESNET_Init},
 
 	{"",					0, NULL}

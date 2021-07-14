@@ -297,9 +297,34 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				}
 			}
 			break;
+		case toesp_cmds_t::ESP_GET_FIRMWARE_VERSION:
+			UDBG("RAINBOW BrokeStudioFirmware received message ESP_GET_FIRMWARE_VERSION\n");
+			this->tx_messages.push_back({ 7, static_cast<uint8>(fromesp_cmds_t::ESP_FIRMWARE_VERSION), 5, 'F', 'C', 'E', 'U', 'X' });
+			break;
+
+
+		// WIFI CMDS
 		case toesp_cmds_t::WIFI_GET_STATUS:
 			UDBG("RAINBOW BrokeStudioFirmware received message WIFI_GET_STATUS\n");
-			this->tx_messages.push_back({2, static_cast<uint8>(fromesp_cmds_t::WIFI_STATUS), 3}); // Simple answer, wifi is ok
+			this->tx_messages.push_back({ 2, static_cast<uint8>(fromesp_cmds_t::WIFI_STATUS), 3 }); // Simple answer, wifi is ok
+			break;
+		case toesp_cmds_t::WIFI_GET_SSID:
+			UDBG("RAINBOW BrokeStudioFirmware received message WIFI_GET_SSID\n");
+			this->tx_messages.push_back({ 12, static_cast<uint8>(fromesp_cmds_t::SSID), 10, 'F', 'C', 'E', 'U', 'X', '_', 'S', 'S', 'I', 'D' });
+			break;
+		case toesp_cmds_t::WIFI_GET_IP:
+			UDBG("RAINBOW BrokeStudioFirmware received message WIFI_GET_ID\n");
+			this->tx_messages.push_back({ 14, static_cast<uint8>(fromesp_cmds_t::IP_ADDRESS), 12, '1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1', '0' });
+			break;
+
+		// AP CMDS
+		case toesp_cmds_t::AP_GET_SSID:
+			UDBG("RAINBOW BrokeStudioFirmware received message AP_GET_SSID\n");
+			this->tx_messages.push_back({ 12, static_cast<uint8>(fromesp_cmds_t::SSID), 10, 'F', 'C', 'E', 'U', 'X', '_', 'S', 'S', 'I', 'D' });
+			break;
+		case toesp_cmds_t::AP_GET_IP:
+			UDBG("RAINBOW BrokeStudioFirmware received message AP_GET_ID\n");
+			this->tx_messages.push_back({ 16, static_cast<uint8>(fromesp_cmds_t::IP_ADDRESS), 14, '1', '2', '7', '.', '0', '.', '0', '.', '1', ':', '8', '0', '8', '0' });
 			break;
 
 		// RND CMDS

@@ -108,6 +108,7 @@ void Transformer_Init(CartInfo *info);
 void RAINBOW_NROM_Init(CartInfo *info);
 void RAINBOW512_Init(CartInfo *info);
 void RAINBOW_Init(CartInfo *info);
+void RAINBOW13_Init(CartInfo *info);
 void UNL22211_Init(CartInfo *info);
 void UNL3DBlock_Init(CartInfo *info);
 void UNL43272_Init(CartInfo *info);

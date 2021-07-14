@@ -486,6 +486,7 @@
     <ClCompile Include="..\src\boards\rainbow512.cpp" />
     <ClCompile Include="..\src\boards\rainbow_esp.cpp" />
     <ClCompile Include="..\src\boards\rainbow.cpp" />
+    <ClCompile Include="..\src\boards\rainbow13.cpp" />
     <ClCompile Include="..\src\boards\rt-01.cpp" />
     <ClCompile Include="..\src\boards\sa-9602b.cpp" />
     <ClCompile Include="..\src\boards\sb-2000.cpp" />
