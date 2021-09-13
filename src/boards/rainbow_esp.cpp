@@ -642,7 +642,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				if (message_size == 3) {
+				if (message_size == 4) {
 					uint8 const path = this->rx_buffer.at(3);
 					uint8 const file = this->rx_buffer.at(4);
 					if (path < NUM_FILE_PATHS && file < NUM_FILES) {
@@ -912,9 +912,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					}else {
 						// Invalid path / file
 						this->tx_messages.push_back({
-							2,
+							4,
 							static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
-							static_cast<uint8>(file_download_results_t::INVALID_PATH_OR_FILE)
+							static_cast<uint8>(file_download_results_t::INVALID_DESTINATION),
+							0,
+							0
 						});
 						break;
 					}
@@ -1834,6 +1836,38 @@ void BrokeStudioFirmware::initDownload() {
     curl_easy_setopt(this->curl_handle, CURLOPT_FAILONERROR, 1L);
 }
 
+std::pair<uint8, uint8> BrokeStudioFirmware::curle_to_net_error(CURLcode curle) {
+	static std::map<CURLcode, std::pair<uint8, uint8>> const resolution = {
+		{
+			CURLE_UNSUPPORTED_PROTOCOL, std::pair<uint8, uint8>(
+				static_cast<uint8>(BrokeStudioFirmware::file_download_results_t::UNKNOWN_OR_UNSUPPORTED_PROTOCOL),
+				static_cast<uint8>(BrokeStudioFirmware::file_download_network_error_t::CONNECTION_LOST)
+			)
+		},
+		{
+			CURLE_WRITE_ERROR, std::pair<uint8, uint8>(
+				static_cast<uint8>(BrokeStudioFirmware::file_download_results_t::NETWORK_ERROR),
+				static_cast<uint8>(BrokeStudioFirmware::file_download_network_error_t::STREAM_WRITE)
+			)
+		},
+		{
+			CURLE_OUT_OF_MEMORY, std::pair<uint8, uint8>(
+				static_cast<uint8>(BrokeStudioFirmware::file_download_results_t::NETWORK_ERROR),
+				static_cast<uint8>(BrokeStudioFirmware::file_download_network_error_t::OUT_OF_RAM)
+			)
+		},
+	};
+
+	auto entry = resolution.find(curle);
+	if (entry != resolution.end()) {
+		return entry->second;
+	}
+	return std::pair<uint8, uint8>(
+		static_cast<uint8>(BrokeStudioFirmware::file_download_results_t::NETWORK_ERROR),
+		static_cast<uint8>(BrokeStudioFirmware::file_download_network_error_t::CONNECTION_FAILED)
+	);
+}
+
 void BrokeStudioFirmware::downloadFile(std::string const& url, uint8 path, uint8 file) {
 	UDBG("RAINBOW BrokeStudioFirmware download %s -> (%u,%u)\n", url.c_str(), (unsigned int)path, (unsigned int)file);
 	//TODO asynchronous download using curl_multi_* (and maybe a thread, or regular ticks on rx/tx/getGpio4)
@@ -1844,7 +1878,9 @@ void BrokeStudioFirmware::downloadFile(std::string const& url, uint8 path, uint8
 		this->tx_messages.push_back({
 			2,
 			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
-			static_cast<uint8>(file_download_results_t::DOWNLOAD_FAILED)
+			static_cast<uint8>(file_download_results_t::NETWORK_ERROR),
+			0,
+			static_cast<uint8>(file_download_network_error_t::NOT_CONNECTED)
 		});
 		return;
 	}
@@ -1858,10 +1894,13 @@ void BrokeStudioFirmware::downloadFile(std::string const& url, uint8 path, uint8
 	// Store data and write result message
 	if (res != CURLE_OK) {
 		UDBG("RAINBOW BrokeStudioFirmware download failed\n");
+		std::pair<uint8, uint8> rainbow_error = curle_to_net_error(res);
 		this->tx_messages.push_back({
-			2,
+			4,
 			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
-			static_cast<uint8>(file_download_results_t::DOWNLOAD_FAILED)
+			rainbow_error.first,
+			0,
+			rainbow_error.second
 		});
 	}else {
 		UDBG("RAINBOW BrokeStudioFirmware download success\n");
@@ -1872,7 +1911,7 @@ void BrokeStudioFirmware::downloadFile(std::string const& url, uint8 path, uint8
 
 		// Write result message
 		this->tx_messages.push_back({
-			2,
+			4,
 			static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
 			static_cast<uint8>(file_download_results_t::SUCCESS)
 		});

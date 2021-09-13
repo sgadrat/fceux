@@ -159,9 +159,25 @@ private:
 
 	enum class file_download_results_t : uint8 {
 		SUCCESS,
+		INVALID_DESTINATION,
 		ERROR_WHILE_DELETING_FILE,
-		DOWNLOAD_FAILED,
-		INVALID_PATH_OR_FILE,
+		UNKNOWN_OR_UNSUPPORTED_PROTOCOL,
+		NETWORK_ERROR,
+		HTTP_STATUS_NOT_IN_2XX,
+	};
+
+	enum class file_download_network_error_t : uint8 {
+		CONNECTION_FAILED = 255,
+		SEND_HEADER_FAILED = 254,
+		SEND_PAYLOAD_FILED = 253,
+		NOT_CONNECTED = 252,
+		CONNECTION_LOST = 251,
+		NO_STREAM = 250,
+		NO_HTTP_SERVER = 249,
+		OUT_OF_RAM = 248,
+		ENCODING = 247,
+		STREAM_WRITE = 246,
+		READ_TIMEOUT = 245,
 	};
 
 	void processBufferedMessage();
@@ -192,6 +208,7 @@ private:
 	static void httpdEvent(mg_connection *nc, int ev, void *ev_data);
 
 	void initDownload();
+	static std::pair<uint8, uint8> curle_to_net_error(CURLcode curle);
 	void downloadFile(std::string const& url, uint8_t path, uint8_t file);
 	void cleanupDownload();
 
