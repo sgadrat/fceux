@@ -244,7 +244,7 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				2,
 				static_cast<uint8>(fromesp_cmds_t::DEBUG_LEVEL),
 				static_cast<uint8>(this->debug_config)
-				});
+			});
 			break;
 		case toesp_cmds_t::DEBUG_SET_LEVEL:
 			UDBG("RAINBOW BrokeStudioFirmware received message DEBUG_SET_LEVEL\n");
@@ -436,15 +436,14 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				this->tx_messages.push_back({
 					1,
 					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS)
-					});
-			}
-			else {
+				});
+			}else {
 				std::deque<uint8> message({
 					static_cast<uint8>(1 + 2 + this->default_server_settings_address.size()),
 					static_cast<uint8>(fromesp_cmds_t::SERVER_SETTINGS),
 					static_cast<uint8>(this->default_server_settings_port >> 8),
 					static_cast<uint8>(this->default_server_settings_port & 0xff)
-					});
+				});
 				message.insert(message.end(), this->default_server_settings_address.begin(), this->default_server_settings_address.end());
 				this->tx_messages.push_back(message);
 			}
@@ -587,8 +586,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 				if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-					// auto mode
-
 					uint8 const path = this->rx_buffer.at(3);
 					uint8 const file = this->rx_buffer.at(4);
 					if (path < NUM_FILE_PATHS && file < NUM_FILES) {
@@ -599,13 +596,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						this->file_offset = 0;
 						this->saveFiles();
 					}
-
+				}else {
+					//TODO manual mode
 				}
-				else {
-					// manual mode
-
-				}
-
 			}
 			break;
 		}
@@ -620,16 +613,13 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = this->working_file_config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (this->working_file == NO_WORKING_FILE) {
 					this->tx_messages.push_back({
 						2,
 						static_cast<uint8>(fromesp_cmds_t::FILE_STATUS),
 						0
-						});
-				}
-				else {
+					});
+				}else {
 					this->tx_messages.push_back({
 						5,
 						static_cast<uint8>(fromesp_cmds_t::FILE_STATUS),
@@ -637,15 +627,12 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						static_cast<uint8>(this->working_file_config),
 						static_cast<uint8>(this->working_path),
 						static_cast<uint8>(this->working_file),
-						});
+					});
 				}
-
 			}
 			else {
-				// manual mode
-
+				//TODO manual mode
 			}
-
 			break;
 		}
 		case toesp_cmds_t::FILE_EXISTS: {
@@ -655,8 +642,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size == 3) {
 					uint8 const path = this->rx_buffer.at(3);
 					uint8 const file = this->rx_buffer.at(4);
@@ -665,14 +650,11 @@ void BrokeStudioFirmware::processBufferedMessage() {
 							2,
 							static_cast<uint8>(fromesp_cmds_t::FILE_EXISTS),
 							static_cast<uint8>(this->file_exists[path][file] ? 1 : 0)
-							});
+						});
 					}
 				}
-
-			}
-			else {
-				// manual mode
-
+			}else {
+				//TODO manual mode
 			}
 			break;
 		}
@@ -683,8 +665,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size == 4) {
 					uint8 const path = this->rx_buffer.at(3);
 					uint8 const file = this->rx_buffer.at(4);
@@ -697,34 +677,29 @@ void BrokeStudioFirmware::processBufferedMessage() {
 								2,
 								static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 								static_cast<uint8>(file_delete_results_t::SUCCESS)
-								});
+							});
 							this->saveFiles();
-						}
-						else {
+						}else {
 							// File does not exist
 							this->tx_messages.push_back({
 								2,
 								static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 								static_cast<uint8>(file_delete_results_t::FILE_NOT_FOUND)
-								});
+							});
 						}
-					}
-					else {
+					}else {
 						// Error while deleting the file
 						this->tx_messages.push_back({
 							2,
 							static_cast<uint8>(fromesp_cmds_t::FILE_DELETE),
 							static_cast<uint8>(file_delete_results_t::INVALID_PATH_OR_FILE)
-							});
+						});
 					}
 				}
-
 			}
 			else {
-				// manual mode
-
+				//TODO manual mode
 			}
-
 			break;
 		}
 		case toesp_cmds_t::FILE_SET_CUR:
@@ -773,8 +748,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size == 3) {
 					uint8 const path = this->rx_buffer.at(3);
 					if (path >= NUM_FILE_PATHS) {
@@ -782,9 +755,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 							2,
 							static_cast<uint8>(fromesp_cmds_t::FILE_COUNT),
 							0
-							});
-					}
-					else {
+						});
+					}else {
 						uint8 nb_files = 0;
 						for (bool exists : this->file_exists[path]) {
 							if (exists) {
@@ -799,24 +771,18 @@ void BrokeStudioFirmware::processBufferedMessage() {
 						UDBG("%u files found in path %u\n", nb_files, path);
 					}
 				}
-
-			}
-			else {
-				// manual mode
-
+			}else {
+				//TODO manual mode
 			}
 
 			break;
-		}
-		case toesp_cmds_t::FILE_GET_LIST: {
+		}case toesp_cmds_t::FILE_GET_LIST: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
 
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size >= 3) {
 					std::vector<uint8> existing_files;
 					uint8 const path = this->rx_buffer.at(3);
@@ -848,13 +814,10 @@ void BrokeStudioFirmware::processBufferedMessage() {
 					message.insert(message.end(), existing_files.begin(), existing_files.end());
 					this->tx_messages.push_back(message);
 				}
-
 			}
 			else {
-				// manual mode
-
+				//TODO manual mode
 			}
-
 			break;
 		}
 		case toesp_cmds_t::FILE_GET_FREE_ID:
@@ -884,8 +847,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size == 4) {
 					uint8 const path = this->rx_buffer.at(3);
 					uint8 const file = this->rx_buffer.at(4);
@@ -910,21 +871,17 @@ void BrokeStudioFirmware::processBufferedMessage() {
 							static_cast<uint8>((file_size >> 16) & 0xff),
 							static_cast<uint8>((file_size >> 8) & 0xff),
 							static_cast<uint8>(file_size & 0xff)
-							});
-					}
-					else {
+						});
+					}else {
 						// File not found or path/file out of bounds
 						this->tx_messages.push_back({
 							1,
 							static_cast<uint8>(fromesp_cmds_t::FILE_INFO)
-							});
+						});
 					}
 				}
-
-			}
-			else {
-				// manual mode
-
+			}else {
+				//TODO manual mode
 			}
 
 			break;
@@ -936,8 +893,6 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
 			if (access_mode == static_cast<uint8>(file_config_flags_t::AUTO_ACCESS_MODE)) {
-				// auto mode
-
 				if (message_size > 6) {
 					// Parse
 					uint8 const urlLength = this->rx_buffer.at(3);
@@ -954,37 +909,30 @@ void BrokeStudioFirmware::processBufferedMessage() {
 							this->file_exists[path][file] = false;
 							this->saveFiles();
 						}
-					}
-					else {
-						// Invalide path / file
+					}else {
+						// Invalid path / file
 						this->tx_messages.push_back({
 							2,
 							static_cast<uint8>(fromesp_cmds_t::FILE_DOWNLOAD),
 							static_cast<uint8>(file_download_results_t::INVALID_PATH_OR_FILE)
-							});
+						});
 						break;
 					}
 
 					// Download new file
 					this->downloadFile(url, path, file);
-					}
-
+				}
+			}else {
+				//TODO manual mode
 			}
-			else {
-				// manual mode
-
-			}
-
 			break;
 		}
 		case toesp_cmds_t::FILE_FORMAT:
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_FORMAT\n");
 			if (message_size == 1) {
 				// Clear file list
-				for (uint8 p = 0; p < NUM_FILE_PATHS; p++)
-				{
-					for (uint8 f = 0; f < NUM_FILES; f++)
-					{
+				for (uint8 p = 0; p < NUM_FILE_PATHS; p++) {
+					for (uint8 f = 0; f < NUM_FILES; f++) {
 						this->file_exists[p][f] = false;
 					}
 				}
