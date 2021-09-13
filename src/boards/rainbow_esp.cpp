@@ -638,6 +638,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_EXISTS: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_EXISTS\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -661,6 +664,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_DELETE: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_DELETE\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -744,6 +750,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_COUNT: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_COUNT\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -779,6 +788,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		}case toesp_cmds_t::FILE_GET_LIST: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_LIST\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -843,6 +855,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_GET_INFO: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_GET_INFO\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -889,6 +904,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 		case toesp_cmds_t::FILE_DOWNLOAD: {
 			UDBG("RAINBOW BrokeStudioFirmware received message FILE_DOWNLOAD\n");
 
+			if (message_size < 2) {
+				break;
+			}
 			uint8 config = this->rx_buffer.at(2);
 			uint8 access_mode = config & static_cast<uint8>(file_config_flags_t::ACCESS_MODE);
 
@@ -896,6 +914,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 				if (message_size > 6) {
 					// Parse
 					uint8 const urlLength = this->rx_buffer.at(3);
+					if (message_size != urlLength + 5) {
+						break;
+					}
 					std::string const url(this->rx_buffer.begin() + 4, this->rx_buffer.begin() + 4 + urlLength);
 
 					uint8 const path = this->rx_buffer.at(4 + urlLength);
