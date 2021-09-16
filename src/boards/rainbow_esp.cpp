@@ -339,6 +339,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case toesp_cmds_t::RND_GET_BYTE_RANGE: {
 			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_BYTE_RANGE\n");
+			if (message_size < 3) {
+				break;
+			}
 			int const min_value = this->rx_buffer.at(2);
 			int const max_value = this->rx_buffer.at(3);
 			int const range = max_value - min_value;
@@ -360,6 +363,9 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			break;
 		case toesp_cmds_t::RND_GET_WORD_RANGE: {
 			UDBG("RAINBOW BrokeStudioFirmware received message RND_GET_WORD_RANGE\n");
+			if (message_size < 5) {
+				break;
+			}
 			int const min_value = (static_cast<int>(this->rx_buffer.at(2)) << 8) + this->rx_buffer.at(3);
 			int const max_value = (static_cast<int>(this->rx_buffer.at(4)) << 8) + this->rx_buffer.at(5);
 			int const range = max_value - min_value;
