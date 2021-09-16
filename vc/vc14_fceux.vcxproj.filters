@@ -838,6 +838,12 @@
     <ClCompile Include="..\src\boards\pec-586.cpp">
       <Filter>boards</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\boards\rainbow_esp.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\rainbow13.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\boards\sa-9602b.cpp">
       <Filter>boards</Filter>
     </ClCompile>
@@ -1109,6 +1115,21 @@
       <Filter>input</Filter>
     </ClCompile>
     <ClCompile Include="..\src\boards\bs4xxxr.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\easywsclient.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\rainbow_esp.cpp">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\mongoose.c">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\pping.c">
+      <Filter>boards</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\boards\rainbow13.cpp">
       <Filter>boards</Filter>
     </ClCompile>
   </ItemGroup>
@@ -1620,6 +1641,7 @@
     <ClInclude Include="..\src\drivers\win\header_editor.h">
       <Filter>drivers\win</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\boards\easywsclient.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\drivers\win\res.rc">
