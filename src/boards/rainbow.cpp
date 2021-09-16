@@ -332,15 +332,20 @@ static DECLFW(RainbowWrite) {
 		Sync();
 		break;
 	case 0x5007: chr_upper_bank = V & 0x01; Sync(); break;
-	case 0x5400: chr[0] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5401: chr[1] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5402: chr[2] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5403: chr[3] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5404: chr[4] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5405: chr[5] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5406: chr[6] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-	case 0x5407: chr[7] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : 0); Sync(); break;
-
+	case 0x5400:
+	case 0x5401:
+	case 0x5402:
+	case 0x5403:
+	case 0x5404:
+	case 0x5405:
+	case 0x5406:
+	case 0x5407:
+	{
+		int bank = A & 0x07;
+		chr[bank] = V | (chr_mode == CHR_MODE_1K ? chr_upper_bank << 8 : chr[bank] & 0x100);
+		Sync();
+		break;
+	}
 	case 0x5C04: IRQLatch = V; break;
 	case 0x5C05: IRQReload = 1; break;
 	case 0x5C06:
@@ -636,16 +641,16 @@ static void RainbowPPUWrite(uint32 A, uint8 V) {
 				break;
 			case CHR_MODE_2K:
 				flash_addr &= 0x7FF;
-				flash_addr |= chr[A >> 11] << 11;
+				flash_addr |= (chr[A >> 11] & 0xff) << 11;
 				break;
 			case CHR_MODE_4K:
 				flash_addr &= 0xFFF;
-				flash_addr |= chr[A >> 12] << 12;
+				flash_addr |= (chr[A >> 12] & 0xff) << 12;
 				break;
 			case CHR_MODE_8K:
 			default:
 				flash_addr &= 0x1FFF;
-				flash_addr |= chr[0] << 13;
+				flash_addr |= (chr[0] & 0xff) << 13;
 				break;
 			}
 			RainbowFlash(CHIP_TYPE::chr_chip, flash_addr, V);
@@ -658,11 +663,13 @@ static void RainbowPower(void) {
 
 	// mapper
 	IRQCount = IRQLatch = IRQa = 0;
-	prg_mode = PRG_MODE_16K_8K;
+	chr_mode &= 0x03;
+	prg_mode &= 0x01;
+	chr_upper_bank &= 0x01;
 	Sync();
 	SetReadHandler(0x6000, 0xFFFF, CartBR);
 	SetWriteHandler(0x6000, 0x7FFF, CartBW);
-	FCEU_CheatAddRAM(0x10, 0x6000, WRAM);
+	FCEU_CheatAddRAM(WRAMSIZE >> 10, 0x6000, WRAM);
 
 	// mapper registers (writes)
 	SetWriteHandler(0x5000, 0x5007, RainbowWrite);
