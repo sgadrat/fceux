@@ -7,7 +7,7 @@
 #include "mongoose.h"
 
 #define CURL_STATICLIB
-#include "curl.h"
+#include "curl/curl.h"
 
 #include <array>
 #include <atomic>

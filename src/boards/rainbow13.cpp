@@ -51,7 +51,7 @@
 #define CHR_MODE_8K				0b11 // 8K mode
 
 #define PRG_MODE_16K_8K_8K		0b0 // 16K + 8K + 8K fixed
-#define PRG_MODE_8K_8K_8K_8K	0b1 // 8K + 8K + 8K fixed
+#define PRG_MODE_8K_8K_8K_8K	0b1 // 8K + 8K + 8K + 8K fixed
 
 #define CHIP_TYPE_PRG			0
 #define CHIP_TYPE_CHR			1

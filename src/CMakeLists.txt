@@ -31,10 +31,13 @@ if(WIN32)
      add_definitions( -D__SDL__  -D__QT_DRIVER__  -DQT_DEPRECATED_WARNINGS )
      add_definitions( -DFCEUDEF_DEBUGGER )
      include_directories( ${SDL_INSTALL_PREFIX}/SDL2/include )
+     include_directories( ${CURL_INSTALL_PREFIX}/curl/include )
      include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/drivers/win/zlib )
      set( OPENGL_LDFLAGS  OpenGL::GL )
      set( SDL2_LDFLAGS  ${SDL_INSTALL_PREFIX}/SDL2/lib/x64/SDL2.lib )
+     set( CURL_LDFLAGS  ${CURL_INSTALL_PREFIX}/curl/lib/libcurl_a.lib )
      set( SYS_LIBS  wsock32 ws2_32 vfw32 Htmlhelp )
+     set( CURL_SYS_LIBS Normaliz Wldap32 Crypt32 advapi32 ) #ws2_32
      set(APP_ICON_RESOURCES_WINDOWS  ${CMAKE_SOURCE_DIR}/icons/fceux.rc )
 else(WIN32)
   # Non Windows System
@@ -114,7 +117,7 @@ else(WIN32)
 	set( OPENGL_LDFLAGS  "-framework OpenGL" )
   else()
 	set( OPENGL_LDFLAGS  ${OPENGL_LIBRARIES} )
-  	set( SYS_LIBS  -lrt  -lpthread  -ldl)
+  	set( SYS_LIBS CURL_SYS_LIBS  -lrt  -lpthread  -ldl)
   endif()
 
 endif(WIN32)
@@ -407,6 +410,11 @@ set(SRC_CORE
   	${CMAKE_CURRENT_SOURCE_DIR}/boards/vrc7.cpp
   	${CMAKE_CURRENT_SOURCE_DIR}/boards/vrc7p.cpp
   	${CMAKE_CURRENT_SOURCE_DIR}/boards/yoko.cpp
+  	${CMAKE_CURRENT_SOURCE_DIR}/boards/easywsclient.cpp
+  	${CMAKE_CURRENT_SOURCE_DIR}/boards/mongoose.c
+  	${CMAKE_CURRENT_SOURCE_DIR}/boards/pping.c
+  	${CMAKE_CURRENT_SOURCE_DIR}/boards/rainbow_esp.cpp
+  	${CMAKE_CURRENT_SOURCE_DIR}/boards/rainbow13.cpp
   	${CMAKE_CURRENT_SOURCE_DIR}/input/arkanoid.cpp
   	${CMAKE_CURRENT_SOURCE_DIR}/input/bworld.cpp
   	${CMAKE_CURRENT_SOURCE_DIR}/input/cursor.cpp
@@ -546,8 +554,10 @@ target_link_libraries( ${APP_NAME}
    ${${Qt}OpenGLWidgets_LIBRARIES}
    ${OPENGL_LDFLAGS}  
  	${SDL2_LDFLAGS}
+	${CURL_LDFLAGS}
 	${MINIZIP_LDFLAGS} ${ZLIB_LIBRARIES}
 	${LUA_LDFLAGS} ${X264_LDFLAGS} ${X265_LDFLAGS}
+	${CURL_SYS_LIBS}
  	${SYS_LIBS}
 )
 

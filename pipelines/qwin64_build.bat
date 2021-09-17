@@ -2,7 +2,7 @@
 set PROJECT_ROOT=%~dp0..
 set CWD=%CD%
 
-call "C:\Qt\5.15\msvc2019_64\bin\qtenv2.bat"
+call "C:\Qt\5.15.2\msvc2019_64\bin\qtenv2.bat"
 REM call "C:\Qt\6.0\msvc2019_64\bin\qtenv2.bat"
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
 
@@ -21,19 +21,49 @@ mkdir build
 cd    build
 mkdir bin
 
+if exist SDL2\ (
+  goto skipSDL2
+)
+
 curl -s -LO http://www.libsdl.org/release/SDL2-devel-2.0.14-VC.zip
 
 REM rmdir /q /s SDL2
 
 powershell -command "Expand-Archive" SDL2-devel-2.0.14-VC.zip .
 
-rename SDL2-2.0.14  SDL2
+rename SDL2-2.0.14 SDL2
+
+:skipSDL2
 
 set SDL_INSTALL_PREFIX=%CD%
 
+if exist curl\ (
+  goto skipCURL
+)
+
+curl -s -LO https://curl.se/download/curl-7.79.0.zip
+
+REM rmdir /q /s curl
+
+powershell -command "Expand-Archive" curl-7.79.0.zip .
+
+cd curl-7.79.0/winbuild
+set RTLIBCFG=static
+nmake /f Makefile.vc mode=static debug=no
+cd ../..
+
+mkdir curl
+xcopy "curl-7.79.0/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel/include" "curl/include" /E /I
+xcopy "curl-7.79.0/builds/libcurl-vc-x64-release-static-ipv6-sspi-schannel/lib" "curl/lib" /E /I
+rmdir curl-7.79.0 /S /Q
+
+:skipCURL
+
+set CURL_INSTALL_PREFIX=%CD%
+
 REM cmake -h
 REM cmake -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DSDL_INSTALL_PREFIX=%SDL_INSTALL_PREFIX%  ..
-cmake -DQT6=0 -DSDL_INSTALL_PREFIX=%SDL_INSTALL_PREFIX%  ..
+cmake -DQT6=0 -DSDL_INSTALL_PREFIX=%SDL_INSTALL_PREFIX% -DCURL_INSTALL_PREFIX=%CURL_INSTALL_PREFIX%  ..
 
 REM nmake
 msbuild /m fceux.sln /p:Configuration=Release
