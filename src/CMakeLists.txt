@@ -35,7 +35,7 @@ if(WIN32)
      include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/drivers/win/zlib )
      set( OPENGL_LDFLAGS  OpenGL::GL )
      set( SDL2_LDFLAGS  ${SDL_INSTALL_PREFIX}/SDL2/lib/x64/SDL2.lib )
-     set( CURL_LDFLAGS  ${CURL_INSTALL_PREFIX}/curl/lib/libcurl_a.lib )
+     set( CURL_LIBRARIES  ${CURL_INSTALL_PREFIX}/curl/lib/libcurl_a.lib )
      set( SYS_LIBS  wsock32 ws2_32 vfw32 Htmlhelp )
      set( CURL_SYS_LIBS Normaliz Wldap32 Crypt32 advapi32 ) #ws2_32
      set(APP_ICON_RESOURCES_WINDOWS  ${CMAKE_SOURCE_DIR}/icons/fceux.rc )
@@ -56,6 +56,7 @@ else(WIN32)
   find_package(PkgConfig REQUIRED)
   find_package(OpenGL REQUIRED)
   find_package(ZLIB REQUIRED)
+  find_package(CURL REQUIRED)
 
   add_definitions( -Wall  -Wno-write-strings  -Wno-sign-compare  -Wno-parentheses  -Wno-unused-local-typedefs  -fPIC )
   add_definitions( -DFCEUDEF_DEBUGGER )
@@ -117,8 +118,9 @@ else(WIN32)
 	set( OPENGL_LDFLAGS  "-framework OpenGL" )
   else()
 	set( OPENGL_LDFLAGS  ${OPENGL_LIBRARIES} )
-  	set( SYS_LIBS CURL_SYS_LIBS  -lrt  -lpthread  -ldl)
+	set( SYS_LIBS -lrt  -lpthread  -ldl)
   endif()
+  set( CURL_SYS_LIBS )
 
 endif(WIN32)
 
@@ -554,7 +556,7 @@ target_link_libraries( ${APP_NAME}
    ${${Qt}OpenGLWidgets_LIBRARIES}
    ${OPENGL_LDFLAGS}  
  	${SDL2_LDFLAGS}
-	${CURL_LDFLAGS}
+	${CURL_LIBRARIES}
 	${MINIZIP_LDFLAGS} ${ZLIB_LIBRARIES}
 	${LUA_LDFLAGS} ${X264_LDFLAGS} ${X265_LDFLAGS}
 	${CURL_SYS_LIBS}
