@@ -5,6 +5,7 @@
 
 #include "pping.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -591,8 +592,8 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size > 6) {
 				uint8 const networkItem = this->rx_buffer.at(2);
 				if (networkItem > NUM_NETWORKS - 1) break;
-				uint8 SSIDlength = fmin(SSID_MAX_LENGTH, this->rx_buffer.at(3));
-				uint8 PASSlength = fmin(PASS_MAX_LENGTH, this->rx_buffer.at(4 + SSIDlength));
+				uint8 SSIDlength = std::min(SSID_MAX_LENGTH, this->rx_buffer.at(3));
+				uint8 PASSlength = std::min(PASS_MAX_LENGTH, this->rx_buffer.at(4 + SSIDlength));
 				this->networks[networkItem].ssid = std::string(this->rx_buffer.begin() + 4, this->rx_buffer.begin() + 4 + SSIDlength);
 				this->networks[networkItem].pass = std::string(this->rx_buffer.begin() + 4 + SSIDlength + 1, this->rx_buffer.begin() + 4 + SSIDlength + 1 + PASSlength);
 
@@ -1014,7 +1015,7 @@ void BrokeStudioFirmware::readFile(uint8 path, uint8 file, uint8 n, uint32 offse
 		data_end = data_begin;
 	}else {
 		data_begin = f.begin() + offset;
-		data_end = f.begin() + fmin(static_cast<std::vector<uint8>::size_type>(offset) + n, f.size());
+		data_end = f.begin() + std::min(static_cast<std::vector<uint8>::size_type>(offset) + n, f.size());
 	}
 	std::vector<uint8>::size_type const data_size = data_end - data_begin;
 
@@ -1413,8 +1414,8 @@ void BrokeStudioFirmware::pingRequest(uint8 n) {
 				uint32 const round_trip_time_ms = duration_cast<milliseconds>(end - begin).count();
 				uint8 const rtt = (round_trip_time_ms + 2) / 4;
 				UDBG("RAINBOW BrokeStudioFirmware ping %d ms\n", round_trip_time_ms);
-				min = fmin(min, rtt);
-				max = fmax(max, rtt);
+				min = std::min(min, rtt);
+				max = std::max(max, rtt);
 				total_ms += round_trip_time_ms;
 			}
 
