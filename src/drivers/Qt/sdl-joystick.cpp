@@ -414,7 +414,7 @@ int GamePad_t::init(int port, const char *guid, const char *profile)
 
 	// If we get to this point and still have not found a
 	// game controller, then load default keyboard.
-	if ((portNum == 0) && (devIdx < 0))
+	if ((portNum == 0 || strnlen(profile, 1) > 0) && (devIdx < 0))
 	{
 		if (loadProfile(profile))
 		{
