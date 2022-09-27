@@ -6,7 +6,8 @@ pwd
 uname -a
 sw_vers
 
-MACOS_MIN_VERSION=10.14 # Oldest version of macOS that will be able to run
+# Oldest version of macOS that will be able to run, in two numbers, example 12.2 (default: let cmake choose the version)
+MACOS_MIN_VERSION=
 
 QT_MAJOR=5;
 QT_PKGNAME=qt$QT_MAJOR;
@@ -100,10 +101,17 @@ echo '**************************'
 ./scripts/unix_make_docs.sh;
 mkdir build;
 cd build;
+
+deploy_option=
+if [ ! -z "$MACOS_MIN_VERSION" ]; then
+	deploy_option="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_MIN_VERSION"
+fi
+
 cmake \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
 	-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
+	$deploy_option \
 	-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_MIN_VERSION \
    -DCMAKE_PREFIX_PATH=$Qt_DIR \
    -DCMAKE_PROJECT_VERSION_MAJOR=$FCEUX_VERSION_MAJOR \
