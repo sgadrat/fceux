@@ -349,7 +349,7 @@ uint8 qtaintramreg;
 uint8 VRAMBuffer = 0, PPUGenLatch = 0;
 uint8 *vnapage[4];
 uint8 PPUNTARAM = 0;
-uint8 PPUCHRRAM = 0;
+uint16 PPUCHRRAM = 0;
 
 //Color deemphasis emulation.  Joy...
 static uint8 deemp = 0;
@@ -377,8 +377,8 @@ uint8 NTARAM[0x800], PALRAM[0x20], SPRAM[0x100], SPRBUF[0x100];
 uint8 UPALRAM[0x03];//for 0x4/0x8/0xC addresses in palette, the ones in
 					//0x20 are 0 to not break fceu rendering.
 
-#define MMC5SPRVRAMADR(V)   &MMC5SPRVPage[(V) >> 10][(V)]
-#define VRAMADR(V)          &VPage[(V) >> 10][(V)]
+#define MMC5SPRVRAMADR(V)   &MMC5SPRVPage[(V) >> 9][(V)]
+#define VRAMADR(V)          &VPage[(V) >> 9][(V)]
 
 uint8* MMC5BGVRAMADR(uint32 A);
 
@@ -429,8 +429,8 @@ void FFCEUX_PPUWrite_Default(uint32 A, uint8 V) {
 	if (PPU_hook) PPU_hook(A);
 
 	if (tmp < 0x2000) {
-		if (PPUCHRRAM & (1 << (tmp >> 10)))
-			VPage[tmp >> 10][tmp] = V;
+		if (PPUCHRRAM & (1 << (tmp >> 9)))
+			VPage[tmp >> 9][tmp] = V;
 	} else if (tmp < 0x3F00) {
 		if (QTAIHack && (qtaintramreg & 1)) {
 			QTAINTRAM[((((tmp & 0xF00) >> 10) >> ((qtaintramreg >> 1)) & 1) << 10) | (tmp & 0x3FF)] = V;
@@ -457,7 +457,7 @@ unsigned int cdloggerVideoDataSize = 0;
 
 int GetCHRAddress(int A) {
 	if (cdloggerVideoDataSize) {
-		int result = &VPage[A >> 10][A] - CHRptr[0];
+		int result = &VPage[A >> 9][A] - CHRptr[0];
 		if ((result >= 0) && (result < (int)cdloggerVideoDataSize))
 			return result;
 	} else
@@ -519,7 +519,7 @@ uint8 FASTCALL FFCEUX_PPURead_Default(uint32 A) {
 	if (PPU_hook) PPU_hook(A);
 
 	if (tmp < 0x2000) {
-		return VPage[tmp >> 10][tmp];
+		return VPage[tmp >> 9][tmp];
 	} else if (tmp < 0x3F00) {
 		return vnapage[(tmp >> 10) & 0x3][tmp & 0x3FF];
 	} else {
@@ -777,7 +777,7 @@ static DECLFR(A2007) {
 			#endif
 			{
 				if ((tmp - 0x1000) < 0x2000)
-					VRAMBuffer = VPage[(tmp - 0x1000) >> 10][tmp - 0x1000];
+					VRAMBuffer = VPage[(tmp - 0x1000) >> 9][tmp - 0x1000];
 				else
 					VRAMBuffer = vnapage[((tmp - 0x1000) >> 10) & 0x3][(tmp - 0x1000) & 0x3FF];
 				if (PPU_hook) PPU_hook(tmp);
@@ -797,7 +797,7 @@ static DECLFR(A2007) {
 					if(MMC5Hack && newppu)
 						VRAMBuffer = *MMC5BGVRAMADR(tmp);
 					else
-						VRAMBuffer = VPage[tmp >> 10][tmp];
+						VRAMBuffer = VPage[tmp >> 9][tmp];
 
 				} else if (tmp < 0x3F00)
 					VRAMBuffer = vnapage[(tmp >> 10) & 0x3][tmp & 0x3FF];
@@ -962,8 +962,8 @@ static DECLFW(B2007) {
 	} else {
 		PPUGenLatch = V;
 		if (tmp < 0x2000) {
-			if (PPUCHRRAM & (1 << (tmp >> 10)))
-				VPage[tmp >> 10][tmp] = V;
+			if (PPUCHRRAM & (1 << (tmp >> 9)))
+				VPage[tmp >> 9][tmp] = V;
 		} else if (tmp < 0x3F00) {
 			if (QTAIHack && (qtaintramreg & 1)) {
 				QTAINTRAM[((((tmp & 0xF00) >> 10) >> ((qtaintramreg >> 1)) & 1) << 10) | (tmp & 0x3FF)] = V;

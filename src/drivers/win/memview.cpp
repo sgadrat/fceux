@@ -666,7 +666,7 @@ int GetMemViewData(uint32 i)
 			return GetMem(i);
 		case MODE_NES_PPU:
 			i &= 0x3FFF;
-			if (i < 0x2000)return VPage[(i) >> 10][(i)];
+			if (i < 0x2000)return VPage[(i) >> 9][(i)];
 			//NSF PPU Viewer crash here (UGETAB) (Also disabled by 'MaxSize = 0x2000')
 			if (GameInfo->type == GIT_NSF)
 				return (0);
@@ -1018,7 +1018,7 @@ void InputData(char *input){
 				// PPU
 				addr &= 0x3FFF;
 				if (addr < 0x2000)
-					VPage[addr >> 10][addr] = data[i]; //todo: detect if this is vrom and turn it red if so
+					VPage[addr >> 9][addr] = data[i]; //todo: detect if this is vrom and turn it red if so
 				if ((addr >= 0x2000) && (addr < 0x3F00))
 					vnapage[(addr >> 10) & 0x3][addr & 0x3FF] = data[i]; //todo: this causes 0x3000-0x3f00 to mirror 0x2000-0x2f00, is this correct?
 				if ((addr >= 0x3F00) && (addr < 0x3FFF))
@@ -2188,7 +2188,7 @@ LRESULT CALLBACK MemViewCallB(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			for (i=0;i<sizeof(bar);i++)
 			{
 				i &= 0x3FFF;
-				if(i < 0x2000) bar[i] = VPage[(i)>>10][(i)];
+				if(i < 0x2000) bar[i] = VPage[(i)>>9][(i)];
 				else if(i < 0x3F00) bar[i] = vnapage[(i>>10)&0x3][i&0x3FF];
 				else bar[i] = READPAL_MOTHEROFALL(i & 0x1F);
 			}
@@ -2223,7 +2223,7 @@ LRESULT CALLBACK MemViewCallB(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				{
 					char v = bar[addr];
 					if(addr < 0x2000)
-						VPage[addr>>10][addr] = v; //todo: detect if this is vrom and turn it red if so
+						VPage[addr>>9][addr] = v; //todo: detect if this is vrom and turn it red if so
 					if((addr >= 0x2000) && (addr < 0x3F00))
 						vnapage[(addr>>10)&0x3][addr&0x3FF] = v; //todo: this causes 0x3000-0x3f00 to mirror 0x2000-0x2f00, is this correct?
 					if((addr >= 0x3F00) && (addr < 0x3FFF))
