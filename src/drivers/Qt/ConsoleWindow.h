@@ -27,6 +27,7 @@
 #include <QRecursiveMutex>
 #endif
 
+#include "Qt/ColorMenu.h"
 #include "Qt/ConsoleViewerGL.h"
 #include "Qt/ConsoleViewerSDL.h"
 #include "Qt/GamePadConf.h"
@@ -53,6 +54,7 @@ class  emulatorThread_t : public QThread
 		int getMaxSchedPriority(void);
 		#endif
 		void signalFrameFinished(void);
+		void signalRomLoad(const char *rom);
 	private:
 		void init(void);
 
@@ -64,6 +66,7 @@ class  emulatorThread_t : public QThread
 	signals:
 		void finished(void);
 		void frameFinished(void);
+		void loadRomRequest( QString s );
 };
 
 class  consoleMenuBar : public QMenuBar
@@ -151,7 +154,7 @@ class  consoleWin_t : public QMainWindow
 		int getMaxSchedPriority(void);
 		#endif
 
-		int loadVideoDriver( int driverId );
+		int loadVideoDriver( int driverId, bool force = false );
 
 		double getRefreshRate(void){ return refreshRate; }
 
@@ -251,11 +254,13 @@ class  consoleWin_t : public QMainWindow
 		QAction *recWavAct;
 		QAction *recAsWavAct;
 		QAction *stopWavAct;
+		QAction *tasEditorAct;
 		//QAction *aviHudAct;
 		//QAction *aviMsgAct;
 
 		QTimer  *gameTimer;
 		QColor   videoBgColor;
+		ColorMenuItem *bgColorMenuItem;
 
 		std::string errorMsg;
 		bool        errorMsgValid;
@@ -268,6 +273,7 @@ class  consoleWin_t : public QMainWindow
 		bool        scrHandlerConnected;
 		bool        contextMenuEnable;
 		bool        soundUseGlobalFocus;
+		bool        autoHideMenuFullscreen;
 
 		std::list <std::string*> romList;
 		std::vector <autoFireMenuAction*> afActList;
@@ -329,6 +335,7 @@ class  consoleWin_t : public QMainWindow
 		void aboutQt(void);
 		void openOnlineDocs(void);
 		void openOfflineDocs(void);
+		void openTasEditor(void);
 		void openMsgLogWin(void);
 		void openInputConfWin(void);
 		void openGameSndConfWin(void);
@@ -343,6 +350,7 @@ class  consoleWin_t : public QMainWindow
 		void openMovieOptWin(void);
 		void openCodeDataLogger(void);
 		void openTraceLogger(void);
+		void openFamilyKeyboard(void);
 		void toggleAutoResume(void);
 		void updatePeriodic(void);
 		void changeState0(void);
@@ -397,6 +405,7 @@ class  consoleWin_t : public QMainWindow
 		void stopMovie(void);
 		void playMovieFromBeginning(void);
 		void setCustomAutoFire(void);
+		void muteSoundVolume(void);
 		void incrSoundVolume(void);
 		void decrSoundVolume(void);
 		void toggleLagCounterDisplay(void);
@@ -409,6 +418,7 @@ class  consoleWin_t : public QMainWindow
 		void toggleBackground(void);
 		void toggleForeground(void);
 		void toggleFamKeyBrdEnable(void);
+		void toggleGlobalCheatEnable(void);
 		void saveState0(void);
 		void saveState1(void);
 		void saveState2(void);
@@ -445,7 +455,10 @@ class  consoleWin_t : public QMainWindow
 		void winScreenChanged( QScreen *scr );
 		void winActiveChanged(void);
 		void emuFrameFinish(void);
+		void toggleMenuAutoHide(bool);
+		void toggleUseBgPaletteForVideo(bool);
 		void videoBgColorChanged( QColor &c );
+		void loadRomRequestCB( QString s );
 
 };
 

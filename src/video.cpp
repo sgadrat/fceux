@@ -72,6 +72,8 @@ static u8 *xbsave=NULL;
 GUIMESSAGE guiMessage;
 GUIMESSAGE subtitleMessage;
 
+bool vidGuiMsgEna = true;
+
 //for input display
 extern int input_display;
 extern uint32 cur_input_display;
@@ -89,19 +91,19 @@ void FCEU_KillVirtualVideo(void)
 {
 	if ( XBuf )
 	{
-		FCEU_free(XBuf); XBuf = NULL;
+		FCEU_afree(XBuf); XBuf = NULL;
 	}
 	if ( XBackBuf )
 	{
-		FCEU_free(XBackBuf); XBackBuf = NULL;
+		FCEU_afree(XBackBuf); XBackBuf = NULL;
 	}
 	if ( XDBuf )
 	{
-		FCEU_free(XDBuf); XDBuf = NULL;
+		FCEU_afree(XDBuf); XDBuf = NULL;
 	}
 	if ( XDBackBuf )
 	{
-		FCEU_free(XDBackBuf); XDBackBuf = NULL;
+		FCEU_afree(XDBackBuf); XDBackBuf = NULL;
 	}
 	//printf("Video Core Cleanup\n");
 }
@@ -114,32 +116,22 @@ void FCEU_KillVirtualVideo(void)
 int FCEU_InitVirtualVideo(void)
 {
 	//Some driver code may allocate XBuf externally.
-	//256 bytes per scanline, * 240 scanline maximum, +16 for alignment,
+	//256 bytes per scanline, * 240 scanline maximum
 	if(XBuf)
 		return 1;
 	
-	XBuf = (u8*)FCEU_malloc(256 * 256 + 16);
-	XBackBuf = (u8*)FCEU_malloc(256 * 256 + 16);
-	XDBuf = (u8*)FCEU_malloc(256 * 256 + 16);
-	XDBackBuf = (u8*)FCEU_malloc(256 * 256 + 16);
-	if(!XBuf || !XBackBuf || !XDBuf || !XDBackBuf)
-	{
-		return 0;
-	}
+	XBuf = (u8*)FCEU_amalloc(256 * 256);
+	XBackBuf = (u8*)FCEU_amalloc(256 * 256);
+	XDBuf = (u8*)FCEU_amalloc(256 * 256);
+	XDBackBuf = (u8*)FCEU_amalloc(256 * 256);
+
 
 	xbsave = XBuf;
 
-	if( sizeof(uint8*) == 4 )
-	{
-		uintptr_t m = (uintptr_t)XBuf;
-		m = ( 8 - m) & 7;
-		XBuf+=m;
-	}
-
 	memset(XBuf,128,256*256);
 	memset(XBackBuf,128,256*256);
-	memset(XBuf,128,256*256);
-	memset(XBackBuf,128,256*256);
+	memset(XDBuf,0,256*256);
+	memset(XDBackBuf,0,256*256);
 
 	return 1;
 }
@@ -398,7 +390,7 @@ void snapAVI()
 		FCEUI_AviVideoUpdate(XBuf);
 }
 
-void FCEU_DispMessageOnMovie(const char *format, ...)
+void FCEU_DispMessageOnMovie( __FCEU_PRINTF_FORMAT const char *format, ...)
 {
 	va_list ap;
 
@@ -406,7 +398,10 @@ void FCEU_DispMessageOnMovie(const char *format, ...)
 	vsnprintf(guiMessage.errmsg,sizeof(guiMessage.errmsg),format,ap);
 	va_end(ap);
 
-	guiMessage.howlong = 180;
+	if ( vidGuiMsgEna )
+	{
+		guiMessage.howlong = 180;
+	}
 	guiMessage.isMovieMessage = true;
 	guiMessage.linesFromBottom = 0;
 
@@ -414,7 +409,7 @@ void FCEU_DispMessageOnMovie(const char *format, ...)
 		guiMessage.howlong = 0;
 }
 
-void FCEU_DispMessage(const char *format, int disppos=0, ...)
+void FCEU_DispMessage( __FCEU_PRINTF_FORMAT const char *format, int disppos=0, ...)
 {
 	va_list ap;
 
@@ -427,9 +422,12 @@ void FCEU_DispMessage(const char *format, int disppos=0, ...)
 	vsnprintf(temp,sizeof(temp),format,ap);
 	va_end(ap);
 	strcat(temp, "\n");
-	FCEU_printf(temp);
+	FCEU_printf("%s",temp);
 
-	guiMessage.howlong = 180;
+	if ( vidGuiMsgEna )
+	{
+		guiMessage.howlong = 180;
+	}
 	guiMessage.isMovieMessage = false;
 
 	guiMessage.linesFromBottom = disppos;

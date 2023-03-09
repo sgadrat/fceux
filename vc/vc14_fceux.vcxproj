@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project InitialTargets="UNDUPOBJ" DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -146,7 +146,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
     </PreBuildEvent>
     <ClCompile>
       <Optimization>Disabled</Optimization>
@@ -186,7 +186,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
       <Message>write current revision number to placeholders</Message>
     </PreBuildEvent>
     <ClCompile>
@@ -229,7 +229,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='PublicRelease|Win32'">
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
       <Message>write current revision number to placeholders</Message>
     </PreBuildEvent>
     <ClCompile>
@@ -288,6 +288,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DisableSpecificWarnings>4267;4244;</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>Normaliz.lib;Wldap32.lib;Crypt32.lib;advapi32.lib;../src/drivers/win/curl/x64/lib/libcurl_a.lib;comctl32.lib;ws2_32.lib;vfw32.lib;winmm.lib;htmlhelp.lib;../src/drivers/win/directx/x64/dsound.lib;../src/drivers/win/directx/x64/dxguid.lib;../src/drivers/win/directx/x64/ddraw.lib;../src/drivers/win/directx/x64/dinput.lib;../src/drivers/win/lua/x64/lua51.lib;../src/drivers/win/lua/x64/luaperks.lib;psapi.lib;mpr.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -298,7 +299,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <DelayLoadDLLs>lua51.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z.dll" "$(OutDir)"
@@ -323,6 +324,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DisableSpecificWarnings>4267;4244;</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>Normaliz.lib;Wldap32.lib;Crypt32.lib;advapi32.lib;../src/drivers/win/curl/x64/lib/libcurl_a.lib;comctl32.lib;ws2_32.lib;vfw32.lib;winmm.lib;htmlhelp.lib;../src/drivers/win/directx/x64/dsound.lib;../src/drivers/win/directx/x64/dxguid.lib;../src/drivers/win/directx/x64/ddraw.lib;../src/drivers/win/directx/x64/dinput.lib;../src/drivers/win/lua/x64/lua51.lib;../src/drivers/win/lua/x64/luaperks.lib;psapi.lib;mpr.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -335,7 +337,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <DelayLoadDLLs>lua51.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z.dll" "$(OutDir)"
@@ -360,6 +362,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DisableSpecificWarnings>4267;4244;</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>Normaliz.lib;Wldap32.lib;Crypt32.lib;advapi32.lib;../src/drivers/win/curl/x64/lib/libcurl_a.lib;comctl32.lib;ws2_32.lib;vfw32.lib;winmm.lib;htmlhelp.lib;../src/drivers/win/directx/x64/dsound.lib;../src/drivers/win/directx/x64/dxguid.lib;../src/drivers/win/directx/x64/ddraw.lib;../src/drivers/win/directx/x64/dinput.lib;../src/drivers/win/lua/x64/lua51.lib;../src/drivers/win/lua/x64/luaperks.lib;psapi.lib;mpr.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -372,7 +375,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
       <DelayLoadDLLs>lua51.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>"%windir%\Sysnative\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
+      <Command>"%windir%\system32\cscript" /nologo /E:JScript "defaultconfig\make_scmrev.h.js"</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z.dll" "$(OutDir)"
@@ -433,6 +436,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\boards\32.cpp" />
     <ClCompile Include="..\src\boards\33.cpp" />
     <ClCompile Include="..\src\boards\34.cpp" />
+    <ClCompile Include="..\src\boards\354.cpp" />
     <ClCompile Include="..\src\boards\36.cpp" />
     <ClCompile Include="..\src\boards\3d-block.cpp" />
     <ClCompile Include="..\src\boards\40.cpp" />
@@ -473,6 +477,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\boards\cheapocabra.cpp" />
     <ClCompile Include="..\src\boards\cityfighter.cpp" />
     <ClCompile Include="..\src\boards\coolboy.cpp" />
+    <ClCompile Include="..\src\boards\coolgirl.cpp" />
     <ClCompile Include="..\src\boards\dance2000.cpp" />
     <ClCompile Include="..\src\boards\eh8813a.cpp" />
     <ClCompile Include="..\src\boards\et-100.cpp" />
@@ -483,6 +488,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\boards\fns.cpp" />
     <ClCompile Include="..\src\boards\hp10xx_hp20xx.cpp" />
     <ClCompile Include="..\src\boards\hp898f.cpp" />
+    <ClCompile Include="..\src\boards\inx007t.cpp" />
     <ClCompile Include="..\src\boards\ks7010.cpp" />
     <ClCompile Include="..\src\boards\ks7012.cpp" />
     <ClCompile Include="..\src\boards\ks7013.cpp" />
@@ -742,6 +748,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\utils\ioapi.cpp" />
     <ClCompile Include="..\src\utils\md5.cpp" />
     <ClCompile Include="..\src\utils\memory.cpp" />
+    <ClCompile Include="..\src\utils\mutex.cpp" />
     <ClCompile Include="..\src\utils\unzip.cpp" />
     <ClCompile Include="..\src\utils\xstring.cpp" />
     <ClCompile Include="..\src\lua\src\lapi.c">
@@ -990,6 +997,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\conddebug.cpp" />
     <ClCompile Include="..\src\config.cpp" />
     <ClCompile Include="..\src\debug.cpp" />
+    <ClCompile Include="..\src\debugsymboltable.cpp" />
     <ClCompile Include="..\src\drawing.cpp" />
     <ClCompile Include="..\src\fceu.cpp" />
     <ClCompile Include="..\src\fds.cpp" />
@@ -997,6 +1005,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClCompile Include="..\src\filter.cpp" />
     <ClCompile Include="..\src\ines.cpp" />
     <ClCompile Include="..\src\input.cpp" />
+    <ClCompile Include="..\src\ld65dbg.cpp" />
     <ClCompile Include="..\src\lua-engine.cpp" />
     <ClCompile Include="..\src\movie.cpp" />
     <ClCompile Include="..\src\netplay.cpp" />
@@ -1023,6 +1032,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClInclude Include="..\src\cheat.h" />
     <ClInclude Include="..\src\conddebug.h" />
     <ClInclude Include="..\src\debug.h" />
+    <ClInclude Include="..\src\debugsymboltable.h" />
     <ClInclude Include="..\src\drawing.h" />
     <ClInclude Include="..\src\driver.h" />
     <ClInclude Include="..\src\drivers\common\args.h" />
@@ -1130,6 +1140,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClInclude Include="..\src\input\fkb.h" />
     <ClInclude Include="..\src\input\share.h" />
     <ClInclude Include="..\src\input\suborkb.h" />
+    <ClInclude Include="..\src\ld65dbg.h" />
     <ClInclude Include="..\src\movie.h" />
     <ClInclude Include="..\src\netplay.h" />
     <ClInclude Include="..\src\nsf.h" />
@@ -1149,6 +1160,7 @@ xcopy /y /d "$(ProjectDir)\..\src\drivers\win\7z_64.dll" "$(OutDir)"</Command>
     <ClInclude Include="..\src\utils\ioapi.h" />
     <ClInclude Include="..\src\utils\md5.h" />
     <ClInclude Include="..\src\utils\memory.h" />
+    <ClInclude Include="..\src\utils\mutex.h" />
     <ClInclude Include="..\src\utils\unzip.h" />
     <ClInclude Include="..\src\utils\valuearray.h" />
     <ClInclude Include="..\src\utils\xstring.h" />

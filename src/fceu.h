@@ -146,10 +146,10 @@ extern FCEUS FSettings;
 
 bool CheckFileExists(const char* filename);	//Receives a filename (fullpath) and checks to see if that file exists
 
-void FCEU_PrintError(const char *format, ...);
-void FCEU_printf(const char *format, ...);
-void FCEU_DispMessage(const char *format, int disppos, ...);
-void FCEU_DispMessageOnMovie(const char *format, ...);
+void FCEU_PrintError( __FCEU_PRINTF_FORMAT const char *format, ...)  __FCEU_PRINTF_ATTRIBUTE( 1, 2 );
+void FCEU_printf( __FCEU_PRINTF_FORMAT const char *format, ...)  __FCEU_PRINTF_ATTRIBUTE( 1, 2 );
+void FCEU_DispMessage( __FCEU_PRINTF_FORMAT const char *format, int disppos, ...)  __FCEU_PRINTF_ATTRIBUTE( 1, 3 );
+void FCEU_DispMessageOnMovie( __FCEU_PRINTF_FORMAT const char *format, ...)  __FCEU_PRINTF_ATTRIBUTE( 1, 2 );
 void FCEU_TogglePPU();
 
 void SetNESDeemph_OldHacky(uint8 d, int force);
@@ -192,4 +192,5 @@ extern uint8 vsdip;
 #define EMULATIONPAUSED_FA 2
 
 #define FRAMEADVANCE_DELAY_DEFAULT 10
+#define NES_HEADER_SIZE  16
 

@@ -247,6 +247,7 @@ class QAsmView : public QWidget
 		int  txtHlgtEndLine;
 
 		int  wheelPixelCounter;
+		int  wheelAngleCounter;
 
 		dbg_asm_entry_t  *asmPC;
 		std::vector <dbg_asm_entry_t*> asmEntry;
@@ -530,6 +531,7 @@ class ConsoleDebugger : public QDialog
 
 		int   selBmAddrVal;
 		bool  windowUpdateReq;
+		bool  startedTraceLogger;
 
 	private:
 		void setRegsFromEntry(void);
@@ -556,6 +558,7 @@ class ConsoleDebugger : public QDialog
 		void asmViewCtxMenuRunToCursor(void);
 		void moveTab( QWidget *w, int row, int column);
 	private slots:
+		void ld65ImportDebug(void);
 		void updatePeriodic(void);
 		void hbarChanged(int value);
 		void vbarChanged(int value);
@@ -588,6 +591,7 @@ class ConsoleDebugger : public QDialog
 		void registerNameEnableCB(bool value);
 		void autoOpenDebugCB( bool value );
 		void debFileAutoLoadCB( bool value );
+		void autoStartTraceLoggerOnOpen(bool value);
 		void breakOnBadOpcodeCB(bool value);
 		void breakOnNewCodeCB(bool value);
 		void breakOnNewDataCB(bool value);

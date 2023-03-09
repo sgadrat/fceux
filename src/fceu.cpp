@@ -181,7 +181,6 @@ static void FCEU_CloseGame(void)
 		}
 
 #ifdef __WIN_DRIVER__
-		extern char LoadedRomFName[2048];
 		if (storePreferences(mass_replace(LoadedRomFName, "|", ".").c_str()))
 			FCEUD_PrintError("Couldn't store debugging data");
 		CDLoggerROMClosed();
@@ -226,10 +225,10 @@ static void FCEU_CloseGame(void)
 		currFrameCounter = 0;
 
 		//Reset flags for Undo/Redo/Auto Savestating //adelikat: TODO: maybe this stuff would be cleaner as a struct or class
-		lastSavestateMade[0] = 0;
+		lastSavestateMade.clear();
 		undoSS = false;
 		redoSS = false;
-		lastLoadstateMade[0] = 0;
+		lastLoadstateMade.clear();
 		undoLS = false;
 		redoLS = false;
 		AutoSS = false;
@@ -422,7 +421,7 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 	//----------
 	//attempt to open the files
 	FCEUFILE *fp;
-	char fullname[2048];	// this name contains both archive name and ROM file name
+	std::string fullname;	// this name contains both archive name and ROM file name
 	int lastpal = PAL;
 	int lastdendy = dendy;
 
@@ -432,7 +431,7 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 	// currently there's only one situation:
 	// the user clicked cancel form the open from archive dialog
 	int userCancel = 0;
-	fp = FCEU_fopen(name, 0, "rb", 0, -1, romextensions, &userCancel);
+	fp = FCEU_fopen(name, LoadedRomFNamePatchToUse[0] ? LoadedRomFNamePatchToUse : nullptr, "rb", 0, -1, romextensions, &userCancel);
 
 	if (!fp)
 	{
@@ -444,16 +443,19 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 	}
 	else if (fp->archiveFilename != "")
 	{
-		strcpy(fullname, fp->archiveFilename.c_str());
-		strcat(fullname, "|");
-		strcat(fullname, fp->filename.c_str());
-	} else
-		strcpy(fullname, name);
+		fullname.assign(fp->archiveFilename.c_str());
+		fullname.append("|");
+		fullname.append(fp->filename.c_str());
+	}
+	else
+	{
+		fullname.assign(name);
+	}
 
 	// reset loaded game BEFORE it's loading.
 	ResetGameLoaded();
 	//file opened ok. start loading.
-	FCEU_printf("Loading %s...\n\n", fullname);
+	FCEU_printf("Loading %s...\n\n", fullname.c_str());
 	GetFileBase(fp->filename.c_str());
 	//reset parameters so they're cleared just in case a format's loader doesn't know to do the clearing
 	MasterRomInfoParams = TMasterRomInfoParams();
@@ -465,7 +467,7 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 
 	FCEU_CloseGame();
 	GameInfo = new FCEUGI();
-	memset(GameInfo, 0, sizeof(FCEUGI));
+	memset( (void*)GameInfo, 0, sizeof(FCEUGI));
 
 	GameInfo->filename = strdup(fp->filename.c_str());
 	if (fp->archiveFilename != "")
@@ -485,16 +487,16 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 	bool FCEUXLoad(const char *name, FCEUFILE * fp);
 
 	int load_result;
-	load_result = iNESLoad(fullname, fp, OverwriteVidMode);
+	load_result = iNESLoad(fullname.c_str(), fp, OverwriteVidMode);
 	if (load_result == LOADER_INVALID_FORMAT)
 	{
-		load_result = NSFLoad(fullname, fp);
+		load_result = NSFLoad(fullname.c_str(), fp);
 		if (load_result == LOADER_INVALID_FORMAT)
 		{
-			load_result = UNIFLoad(fullname, fp);
+			load_result = UNIFLoad(fullname.c_str(), fp);
 			if (load_result == LOADER_INVALID_FORMAT)
 			{
-				load_result = FDSLoad(fullname, fp);
+				load_result = FDSLoad(fullname.c_str(), fp);
 			}
 		}
 	}	
@@ -503,7 +505,6 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 
 #ifdef __WIN_DRIVER__
 		// ################################## Start of SP CODE ###########################
-		extern char LoadedRomFName[2048];
 		extern int loadDebugDataFailed;
 
 		if ((loadDebugDataFailed = loadPreferences(mass_replace(LoadedRomFName, "|", ".").c_str())))
@@ -536,16 +537,16 @@ FCEUGI *FCEUI_LoadGameVirtual(const char *name, int OverwriteVidMode, bool silen
 
 		if (!lastpal && PAL) {
 			FCEU_DispMessage("PAL mode set", 0);
-			FCEUI_printf("PAL mode set");
+			FCEUI_printf("PAL mode set\n");
 		}
 		else if (!lastdendy && dendy) {
 			// this won't happen, since we don't autodetect dendy, but maybe someday we will?
 			FCEU_DispMessage("Dendy mode set", 0);
-			FCEUI_printf("Dendy mode set");
+			FCEUI_printf("Dendy mode set\n");
 		}
 		else if ((lastpal || lastdendy) && !(PAL || dendy)) {
 			FCEU_DispMessage("NTSC mode set", 0);
-			FCEUI_printf("NTSC mode set");
+			FCEUI_printf("NTSC mode set\n");
 		}
 
 		if (GameInfo->type != GIT_NSF && !disableAutoLSCheats)
@@ -726,7 +727,8 @@ extern unsigned int frameAdvHoldTimer;
 ///Skip may be passed in, if FRAMESKIP is #defined, to cause this to emulate more than one frame
 void FCEUI_Emulate(uint8 **pXBuf, int32 **SoundBuf, int32 *SoundBufSize, int skip) {
 	//skip initiates frame skip if 1, or frame skip and sound skip if 2
-	int r, ssize;
+	FCEU_MAYBE_UNUSED int r;
+	int ssize;
 
 	JustFrameAdvanced = false;
 
@@ -743,7 +745,7 @@ void FCEUI_Emulate(uint8 **pXBuf, int32 **SoundBuf, int32 *SoundBufSize, int ski
 		{
 			EmulationPaused = EMULATIONPAUSED_FA;
 		}
-		if (frameAdvance_Delay_count < frameAdvanceDelayScaled)
+		if ( static_cast<unsigned int>(frameAdvance_Delay_count) < frameAdvanceDelayScaled)
 		{
 			frameAdvance_Delay_count++;
 		}
@@ -808,6 +810,9 @@ void FCEUI_Emulate(uint8 **pXBuf, int32 **SoundBuf, int32 *SoundBufSize, int ski
 	r = FCEUPPU_Loop(skip);
 
 	if (skip != 2) ssize = FlushEmulateSound();  //If skip = 2 we are skipping sound processing
+
+	//flush tracer once a frame, since we're likely to end up back at a user interaction loop after this with emulation paused
+	FCEUD_FlushTrace();
 
 #ifdef _S9XLUA_H
 	CallRegisteredLuaFunctions(LUACALL_AFTEREMULATION);
@@ -1062,7 +1067,7 @@ void FCEU_ResetVidSys(void) {
 
 FCEUS FSettings;
 
-void FCEU_printf(const char *format, ...) 
+void FCEU_printf( __FCEU_PRINTF_FORMAT const char *format, ...)
 {
 	char temp[2048];
 
@@ -1082,7 +1087,7 @@ void FCEU_printf(const char *format, ...)
 	va_end(ap);
 }
 
-void FCEU_PrintError(const char *format, ...) 
+void FCEU_PrintError( __FCEU_PRINTF_FORMAT const char *format, ...)
 {
 	char temp[2048];
 
@@ -1156,7 +1161,7 @@ void FCEUI_SetRegion(int region, int notify)
 			if (notify)
 			{
 				FCEU_DispMessage("NTSC mode set", 0);
-				FCEUI_printf("NTSC mode set");
+				FCEUI_printf("NTSC mode set\n");
 			}
 			break;
 		case 1: // PAL
@@ -1167,7 +1172,7 @@ void FCEUI_SetRegion(int region, int notify)
 			if (notify)
 			{
 				FCEU_DispMessage("PAL mode set", 0);
-				FCEUI_printf("PAL mode set");
+				FCEUI_printf("PAL mode set\n");
 			}
 			break;
 		case 2: // Dendy
@@ -1178,7 +1183,7 @@ void FCEUI_SetRegion(int region, int notify)
 			if (notify)
 			{
 				FCEU_DispMessage("Dendy mode set", 0);
-				FCEUI_printf("Dendy mode set");
+				FCEUI_printf("Dendy mode set\n");
 			}
 			break;
 	}
@@ -1229,12 +1234,16 @@ void FCEUI_ClearEmulationFrameStepped()
 //ideally maybe we shouldnt be using this, but i need it for quick merging
 void FCEUI_SetEmulationPaused(int val) {
 	EmulationPaused = val;
+	if(EmulationPaused)
+		FCEUD_FlushTrace();
 }
 
 void FCEUI_ToggleEmulationPause(void)
 {
 	EmulationPaused = (EmulationPaused & EMULATIONPAUSED_PAUSED) ^ EMULATIONPAUSED_PAUSED;
 	DebuggerWasUpdated = false;
+	if(EmulationPaused)
+		FCEUD_FlushTrace();
 }
 
 void FCEUI_FrameAdvanceEnd(void) {
@@ -1242,8 +1251,8 @@ void FCEUI_FrameAdvanceEnd(void) {
 }
 
 void FCEUI_FrameAdvance(void) {
-	frameAdvanceRequested = true;
 	frameAdvance_Delay_count = 0;
+	frameAdvanceRequested = true;
 }
 
 static int AutosaveCounter = 0;
@@ -1260,7 +1269,7 @@ void UpdateAutosave(void) {
 		FCEUSS_Save(f, false);
 		AutoSS = true;  //Flag that an auto-savestate was made
 		free(f);
-        f = NULL;
+		f = NULL;
 		AutosaveStatus[AutosaveIndex] = 1;
 	}
 }
@@ -1346,6 +1355,10 @@ bool FCEU_IsValidUI(EFCEUI ui) {
 	case FCEUI_INPUT_BARCODE:
 		if (!GameInfo) return false;
 		if (!FCEUMOV_Mode(MOVIEMODE_INACTIVE)) return false;
+		break;
+	default:
+		// Unhandled falls out to end of function
+		break;
 	}
 
 	return true;
@@ -1407,10 +1420,16 @@ virtual void Power() {
 }
 };
 
-void FCEUXGameInterface(GI command) {
-	switch (command) {
-	case GI_POWER:
-		cart->Power();
+void FCEUXGameInterface(GI command)
+{
+	switch (command)
+	{
+		case GI_POWER:
+			cart->Power();
+		break;
+		default:
+			// Unhandled cases
+		break;
 	}
 }
 

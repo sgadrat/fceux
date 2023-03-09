@@ -346,7 +346,7 @@ static int GetFileData(uint32 offset){
 }
 
 static int WriteFileData(uint32 addr,int data){
-	if (addr < 16) MessageBox(hMemView, "You can't edit ROM header here, however you can use iNES Header Editor to edit the header if it's an iNES format file.", "Sorry", MB_OK | MB_ICONERROR);
+	if (addr < 16) MessageBox(hMemView, "You can't edit ROM header here, however you can use NES Header Editor to edit the header if it's an iNES format file.", "Sorry", MB_OK | MB_ICONERROR);
 	if((addr >= 16) && (addr < PRGsize[0]+16)) *(uint8 *)(GetNesPRGPointer(addr-16)) = data;
 	if((addr >= PRGsize[0]+16) && (addr < CHRsize[0]+PRGsize[0]+16)) *(uint8 *)(GetNesCHRPointer(addr-16-PRGsize[0])) = data;
 
@@ -736,7 +736,7 @@ void UpdateColorTable()
 				int temp_offset;
 				for (i = 0; i < DataAmount; i++)
 				{
-					temp_offset = CurOffset + i - 16;	// (minus iNES header)
+					temp_offset = CurOffset + i - 16;	// (minus NES header)
 					if (temp_offset >= 0)
 					{
 						if ((unsigned int)temp_offset < cdloggerdataSize)
@@ -822,7 +822,7 @@ void UpdateColorTable()
 
 int addrtodelete;    // This is a very ugly hackish method of doing this
 int cheatwasdeleted; // but it works and that is all that matters here.
-int DeleteCheatCallB(char *name, uint32 a, uint8 v, int compare,int s,int type, void *data){  //mbg merge 6/29/06 - added arg
+int DeleteCheatCallB(const char *name, uint32 a, uint8 v, int compare,int s,int type, void *data){  //mbg merge 6/29/06 - added arg
 	if(cheatwasdeleted == -1)return 1;
 	cheatwasdeleted++;
 	if(a == addrtodelete){
@@ -901,7 +901,7 @@ void UnfreezeAllRam() {
 
 	int i=0;
 
-	char * Cname;
+	std::string Cname;
 	uint32 Caddr;
 	int Ctype;
 
@@ -919,7 +919,7 @@ void UnfreezeAllRam() {
 		// would be added by the freeze command. Manual unfreeze should let them
 		// make that mistake once or twice, in case they like it that way.
 		FCEUI_GetCheat(i,&Cname,&Caddr,NULL,NULL,NULL,&Ctype);
-		if ((Cname[0] == '\0') && ((Caddr < 0x2000) || ((Caddr >= 0x6000) && (Caddr < 0x8000))) && (Ctype == 1)) {
+		if ((Cname.empty()) && ((Caddr < 0x2000) || ((Caddr >= 0x6000) && (Caddr < 0x8000))) && (Ctype == 1)) {
 			// Already Added, so consider it a success
 			FreezeRam(Caddr,-1,1);
 
@@ -960,14 +960,14 @@ void FreezeRam(int address, int mode, int final){
 //input is expected to be an ASCII string
 void InputData(char *input){
 	//CursorEndAddy = -1;
-	int addr, i, j, datasize = 0;
+	int addr, datasize = 0;
 	unsigned char *data;
 	char inputc;
 	//char str[100];
 	//mbg merge 7/18/06 added cast:
 	data = (uint8 *)malloc(strlen(input) + 1); //it can't be larger than the input string, so use that as the size
 
-	for(i = 0;input[i] != 0;i++){
+	for(int i = 0;input[i] != 0;i++){
 		if(!EditingText){
 			inputc = -1;
 			if((input[i] >= 'a') && (input[i] <= 'f')) inputc = input[i]-('a'-0xA);
@@ -983,9 +983,15 @@ void InputData(char *input){
 			{
 				TempData = inputc;
 			}
-		} else {
-			for(j = 0;j < 256;j++)if(chartable[j] == input[i])break;
-			if(j == 256)continue;
+		}
+		else
+		{
+			int j;
+			for(j = 0; j < 256; j++)
+				if(chartable[j] == input[i])
+					break;
+			if(j == 256)
+				continue;
 			data[datasize++] = j;
 		}
 	}
@@ -1003,10 +1009,17 @@ void InputData(char *input){
 	//sprintf(str,"datasize = %d",datasize);
 	//MessageBox(hMemView,str, "debug", MB_OK);
 
-	for(i = 0;i < datasize;i++){
-		addr = CursorStartAddy+i;
+	if(EditingMode == MODE_NES_FILE)
+	{
+		ApplyPatch(CursorStartAddy, datasize, data);
+	}
+	else
+	{
+		for(int i = 0;i < datasize;i++)
+		{
+			addr = CursorStartAddy+i;
 
-		if (addr >= MaxSize) continue;
+			if (addr >= MaxSize) continue;
 
 		switch(EditingMode)
 		{

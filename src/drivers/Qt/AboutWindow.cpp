@@ -62,6 +62,7 @@ static const char *Authors[] = {
 	"\t mjbudd77",
 	"\t Lukas Sabota //punkrockguy318", "\t Soules", "\t Bryan Cain", "\t radsaq",
 		"\t Shinydoofy",
+	"\nQt GUI written by mjbudd77\n",
 	"FceuX 2.0 Developers:",
 	"\t SP", "\t zeromus", "\t adelikat", "\t caH4e3", "\t qfox",
 	"\t Luke Gustafson", "\t _mz", "\t UncombedCoconut", "\t DwEdit", "\t AnS",
@@ -146,7 +147,7 @@ AboutWindow::AboutWindow(QWidget *parent)
 
 	hbox1 = new QHBoxLayout();
 	lbl = new QLabel();
-	lbl->setText("<a href=\"http://fceux.com\">Website</a>");
+	lbl->setText("<a href=\"https://fceux.com\">Website</a>");
 	lbl->setTextInteractionFlags(Qt::TextBrowserInteraction);
 	lbl->setOpenExternalLinks(true);
 
@@ -253,7 +254,7 @@ AboutWindow::~AboutWindow(void)
 //----------------------------------------------------------------------------
 void AboutWindow::closeEvent(QCloseEvent *event)
 {
-	printf("About Window Close Event\n");
+	//printf("About Window Close Event\n");
 	done(0);
 	deleteLater();
 	event->accept();
