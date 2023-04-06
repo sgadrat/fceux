@@ -429,7 +429,7 @@ void FCEU_DispMessage(const char *format, int disppos=0, ...)
 	strcat(temp, "\n");
 	FCEU_printf(temp);
 
-	guiMessage.howlong = 180;
+	guiMessage.howlong = 0;
 	guiMessage.isMovieMessage = false;
 
 	guiMessage.linesFromBottom = disppos;
