@@ -344,7 +344,9 @@ uint8 MMC5HackSPPage = 0;
 int RNBWHack = 0;
 uint8 *RNBWHackExNTARAMPtr = 0;
 uint8 *RNBWHackVROMPtr = 0;
+uint32 RNBWHackVROMMask = 0xff;
 uint8 RNBWHackNTcontrol[4];
+uint8 RNBWHackBGBankOffset;
 uint8 RNBWHackCurSprite;
 
 int PEC586Hack = 0;
@@ -403,7 +405,7 @@ uint8 READPAL_MOTHEROFALL(uint32 A)
 
 //this duplicates logic which is embedded in the ppu rendering code
 //which figures out where to get CHR data from depending on various hack modes
-//mostly involving mmc5.
+//mostly involving mmc5 and rainbow.
 //this might be incomplete.
 uint8* FCEUPPU_GetCHR(uint32 vadr, uint32 refreshaddr) {
 	if (MMC5Hack) {
@@ -422,7 +424,7 @@ uint8* FCEUPPU_GetCHR(uint32 vadr, uint32 refreshaddr) {
 		if (NT_ext_mode & 0x02)
 		{
 			uint8 *C = RNBWHackVROMPtr;
-			C += (( RNBWHackExNTARAMPtr[NT_1K_dest * 0x200 + (NTRefreshAddr & 0x3ff)] & 0x3f ) << 12) + (vadr & 0xfff);
+			C += ( (RNBWHackBGBankOffset * 0x40000) + (( RNBWHackExNTARAMPtr[NT_1K_dest * 0x400 + (NTRefreshAddr & 0x3ff)] & 0x3f ) << 12) + (vadr & 0xfff) ) & RNBWHackVROMMask;
 			return C;
 		}
 	}
@@ -441,7 +443,7 @@ int FCEUPPU_GetAttr(int ntnum, int xt, int yt) {
 		uint8 NT_1K_dest = (RNBWHackNTcontrol[NT] & 0x0C) >> 2;
 		uint8 NT_ext_mode = RNBWHackNTcontrol[NT] & 0x03;
 		if (NT_ext_mode & 0x01)
-			return (RNBWHackExNTARAMPtr[NT_1K_dest * 0x200 + (NTRefreshAddr & 0x3ff)] & 0xC0) >> 6;
+			return (RNBWHackExNTARAMPtr[NT_1K_dest * 0x400 + (NTRefreshAddr & 0x3ff)] & 0xC0) >> 6;
 	}
 	return (vnapage[ntnum][attraddr] & (3 << temp)) >> temp;
 }
@@ -486,7 +488,7 @@ int GetCHRAddress(int A)
 		int result = -1;
 		if ( (A >= 0) && (A < 0x2000) )
 		{
-			result = &VPage[A >> 10][A] - CHRptr[0];
+			result = &VPage[A >> 9][A] - CHRptr[0];
 		}
 		if ((result >= 0) && (result < (int)cdloggerVideoDataSize))
 		{
