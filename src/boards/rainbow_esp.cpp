@@ -549,16 +549,79 @@ void BrokeStudioFirmware::processBufferedMessage() {
 			if (message_size == 2) {
 				uint8 networkItem = this->rx_buffer.at(2);
 				if (networkItem > NUM_FAKE_NETWORKS-1) networkItem = NUM_FAKE_NETWORKS-1;
-				this->tx_messages.push_back({
-					21,
-					static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
-					4, // encryption type
-					0x47, // RSSI
-					0x00,0x00,0x00,0x01, // channel
-					0, // hidden?
-					12, // SSID length
-					'F','C','E','U','X','_','S','S','I','D','_',static_cast<uint8>(networkItem + '0') // SSID
-				});
+				switch (networkItem) {
+				case 0:
+					this->tx_messages.push_back({
+						25,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						16, // SSID length
+						'S', 'w', 'e', 'e', 't', ' ', 'H', 'o', 'm', 'e', ' ', 'W', 'i', '-', 'F', 'i', 
+					});
+					break;
+				case 1:
+					this->tx_messages.push_back({
+						21,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						12, // SSID length
+						'B', 'i', 'd', 'o', 'n', '\'', 's', ' ', 'l', 'a', 'i', 'r', 
+					});
+					break;
+				case 2:
+					this->tx_messages.push_back({
+						26,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						17, // SSID length
+						'2', '2', '1', 'b', ' ', 'B', 'a', 'k', 'e', 'r', ' ', 'S', 't', 'r', 'e', 'e', 't', 
+					});
+					break;
+				case 3:
+					this->tx_messages.push_back({
+						22,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						13, // SSID length
+						'C', 'h', 'a', 'o', 's', 'a', 'h', ' ', 'h', 'o', 'u', 's', 'e', 
+					});
+					break;
+				case 4:
+					this->tx_messages.push_back({
+						23,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						14, // SSID length
+						'F', 'S', 'F', ' ', 'O', 'p', 'e', 'n', ' ', 'W', 'i', '-', 'F', 'i', 
+					});
+					break;
+				default:
+					this->tx_messages.push_back({
+						21,
+						static_cast<uint8>(fromesp_cmds_t::NETWORK_SCANNED_DETAILS),
+						4, // encryption type
+						0x47, // RSSI
+						0x00,0x00,0x00,0x01, // channel
+						0, // hidden?
+						12, // SSID length
+						'F','C','E','U','X',' ','S','S','I','D','_',static_cast<uint8>(networkItem + '0') // SSID
+					});
+				}
 			}
 			break;
 		case toesp_cmds_t::NETWORK_GET_REGISTERED:
