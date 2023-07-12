@@ -4,14 +4,15 @@ id
 pwd
 uname -a
 cat /etc/os-release
+env
 
 SCRIPT_DIR=$( cd $(dirname $BASH_SOURCE[0]); pwd );
 
 #echo $SCRIPT_DIR;
 
 gcc --version
-python2 --version
-python3 --version
+#python2 --version
+#python3 --version
 
 INSTALL_PREFIX=/tmp/fceux
 
@@ -19,6 +20,10 @@ echo '****************************************'
 echo "APPVEYOR_SSH_KEY=$APPVEYOR_SSH_KEY";
 echo "APPVEYOR_SSH_BLOCK=$APPVEYOR_SSH_BLOCK";
 echo '****************************************'
+
+if [ ! -z $FCEU_RELEASE_VERSION ]; then
+	APPVEYOR_CMAKE_FLAGS=" -DPUBLIC_RELEASE=1 ";
+fi
 
 echo '****************************************'
 echo '****************************************'
@@ -98,13 +103,19 @@ sudo apt-get --assume-yes  install libavcodec-dev
 sudo apt-get --assume-yes  install libavformat-dev
 sudo apt-get --assume-yes  install libavutil-dev
 sudo apt-get --assume-yes  install libswscale-dev
-sudo apt-get --assume-yes  install libavresample-dev
+sudo apt-get --assume-yes  install libswresample-dev
 
 # Install cppcheck
 echo '****************************************'
 echo 'Install Check Dependency cppcheck'
 echo '****************************************'
 sudo apt-get --assume-yes  install cppcheck
+
+# Install libcurl-dev
+echo '****************************************'
+echo 'Install Dependency libcurl-dev (libcurl4-gnutls-dev)'
+echo '****************************************'
+sudo apt-get --assume-yes  install libcurl4-gnutls-dev
 
 echo '**************************'
 echo '***  Building Project  ***'
@@ -119,6 +130,7 @@ cmake  \
    -DCMAKE_BUILD_TYPE=Release  \
    -DCMAKE_INSTALL_PREFIX=/usr \
    -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
+   $APPVEYOR_CMAKE_FLAGS \
 	..
 make -j `nproc`
 make  install  DESTDIR=$INSTALL_PREFIX
@@ -191,5 +203,13 @@ echo 'Testing Install of Package'
 echo '**************************************************************'
 sudo dpkg -i /tmp/fceux-*.deb
 
-echo 'Pushing Debian Package to Build Artifacts'
-appveyor PushArtifact /tmp/fceux-*.deb
+if [ ! -z $APPVEYOR ]; then
+	echo 'Pushing Debian Package to Build Artifacts'
+	if [ -z $FCEU_RELEASE_VERSION ]; then
+		cp /tmp/fceux-*.deb /tmp/fceux-ubuntu-x64.deb
+		appveyor PushArtifact /tmp/fceux-ubuntu-x64.deb
+		appveyor SetVariable  -Name  LINUX_ARTIFACT  -Value  fceux-ubuntu-x64.deb
+	else
+		appveyor PushArtifact /tmp/fceux-*.deb
+	fi
+fi
