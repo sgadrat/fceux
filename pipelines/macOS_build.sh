@@ -139,6 +139,11 @@ cmake \
 	.. || exit 1
 make -j $NPROC || exit 1
 #sudo make install || exit 1 # make install is already run by cpack
+
+# XProtect does not like automated system that create disk images
+#  https://github.com/actions/runner-images/issues/7522
+echo killing XProtect...; sudo pkill -9 XProtect >/dev/null || true;
+echo waiting for XProtect agony...; while pgrep XProtect; do sleep 3; done;
 sudo cpack -G DragNDrop || exit 1
 
 if [ ! -z $APPVEYOR ]; then
