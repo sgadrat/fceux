@@ -128,7 +128,7 @@ static float S_IRQ_dot_count;
 static uint8 S_IRQ_ready, S_IRQ_last_SL_triggered;
 
 // CPU Cycle IRQ
-static bool C_IRQ_enable, C_IRQ_reset, C_IRQ_pending;
+static bool C_IRQ_enable, C_IRQ_reset, C_IRQ_pending, C_IRQ_ZPCM_ack;
 static int32 C_IRQLatch, C_IRQCount;
 
 // FPGA RAM auto R/W
@@ -179,6 +179,7 @@ static SFORMAT RainbowStateRegs[] =
 	{ &C_IRQ_enable, 1, "CPUE" },
 	{ &C_IRQ_pending, 1, "CPUP" },
 	{ &C_IRQ_reset, 1, "CPUR" },
+	{ &C_IRQ_ZPCM_ack, 1, "CPZA" },
 	{ &C_IRQLatch, 4, "CPUL" },
 	{ &C_IRQCount, 4, "CPUC" },
 
@@ -581,22 +582,13 @@ static DECLFW(RNBW_ExpAudioWr) {
 }
 
 static DECLFR(RNBW_0x4011Rd) {
+	if (C_IRQ_ZPCM_ack)
+	{
+		C_IRQ_pending = false;
+		C_IRQ_enable = C_IRQ_reset;
+	}
 	uint8 ZPCM_val = ((ZPCM[0] + ZPCM[1] + ZPCM[2]) & 0x3f) << 2;
 	return ZPCM_val;
-}
-
-static DECLFR(RNBW_RstPowRd) {
-	if (fceuindbg == 0)
-	{
-		if (A == 0xFFFC) reset_step = 1;
-		else if ((A == 0xFFFD) & (reset_step == 1))
-		{
-			RainbowReset();
-			reset_step = 0;
-		}
-		else reset_step = 0;
-	}
-	return CartBR(A);
 }
 
 static DECLFR(RNBW_0x4100Rd) {
@@ -763,11 +755,12 @@ static DECLFW(RNBW_0x4100Wr) {
 	case 0x4152: S_IRQ_pending = false; S_IRQ_enable = false; break;
 	case 0x4153: S_IRQ_offset = V > 169 ? 169 : V; break;
 	// CPU Cycle IRQ
-	case 0x4158: C_IRQLatch &= 0xFF00; C_IRQLatch |= V; C_IRQCount = C_IRQLatch; break;
-	case 0x4159: C_IRQLatch &= 0x00FF; C_IRQLatch |= V << 8; C_IRQCount = C_IRQLatch; break;
+	case 0x4158: C_IRQLatch &= 0x00FF; C_IRQLatch |= V << 8; C_IRQCount = C_IRQLatch; break;
+	case 0x4159: C_IRQLatch &= 0xFF00; C_IRQLatch |= V; C_IRQCount = C_IRQLatch; break;
 	case 0x415A:
 		C_IRQ_enable = V & 0x01;
 		C_IRQ_reset = (V & 0x02) >> 1;
+		C_IRQ_ZPCM_ack = (V & 0x04) >> 2;
 		if (C_IRQ_enable)
 			C_IRQCount = C_IRQLatch;
 		break;
@@ -1561,6 +1554,7 @@ static void RainbowReset(void) {
 	C_IRQ_enable = false;
 	C_IRQ_pending = false;
 	C_IRQ_reset = false;
+	C_IRQ_ZPCM_ack = false;
 
 	// Audio Output
 	audio_output = 1;
@@ -1583,11 +1577,7 @@ static void RainbowPower(void) {
 	else bootrom = 0;
 	RainbowReset();
 
-	// reset-power vectors
-	SetReadHandler(0xFFFC, 0xFFFF, RNBW_RstPowRd);
-
-	//
-	SetReadHandler(0x4800, 0xFFFB, CartBR);
+	SetReadHandler(0x4800, 0xFFFF, CartBR);
 	SetWriteHandler(0x4800, 0x5FFF, CartBW);
 
 	/*
