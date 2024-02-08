@@ -113,8 +113,8 @@ static int CHRRAMSIZE = 0; // max 512 KiB
 
 extern uint8 *ExtraNTARAM;
 
-uint8 fill_mode_tile;
-uint8 fill_mode_attr;
+static uint8 fill_mode_tile;
+static uint8 fill_mode_attr;
 
 static uint8 RNBWbattery = 0;
 static uint8 reset_step = 0;
@@ -131,9 +131,14 @@ static uint8 S_IRQ_ready, S_IRQ_last_SL_triggered;
 static bool C_IRQ_enable, C_IRQ_reset, C_IRQ_pending, C_IRQ_ZPCM_ack;
 static int32 C_IRQLatch, C_IRQCount;
 
+// vector redirection
+static bool nmi_redirection, irq_redirection;
+static uint16 nmi_address;
+static uint16 irq_address;
+
 // FPGA RAM auto R/W
-uint16 fpga_ram_auto_rw_address;
-uint8 fpga_ram_auto_rw_increment;
+static uint16 fpga_ram_auto_rw_address;
+static uint8 fpga_ram_auto_rw_increment;
 
 // ESP message IRQ
 static uint8 ESP_IRQ_pending;
@@ -635,6 +640,20 @@ static DECLFR(RNBW_0x4100Rd) {
 	}
 }
 
+static DECLFR(RNBW_0x4800Rd) {
+	if (nmi_redirection) {
+		if (A == 0xFFFA) return nmi_address & 0xff;
+		if (A == 0xFFFB) return nmi_address >> 8;
+	}
+
+	if (irq_redirection) {
+		if (A == 0xFFFE) return irq_address & 0xff;
+		if (A == 0xFFFF) return irq_address >> 8;
+	}
+
+	return CartBR(A);
+}
+
 static DECLFW(RNBW_0x4100Wr) {
 	switch (A)
 	{
@@ -778,6 +797,16 @@ static DECLFW(RNBW_0x4100Wr) {
 		fpga_ram_auto_rw_address += fpga_ram_auto_rw_increment;
 		break;
 	}
+	// Vector redirection
+	case 0x416B:
+		nmi_redirection = V & 1;
+		irq_redirection = V & 2;
+		break;
+	case 0x416C: nmi_address = (nmi_address & 0x00ff) | (V << 8); break;
+	case 0x416D: nmi_address = (nmi_address & 0xff00) | (V); break;
+	case 0x416E: irq_address = (irq_address & 0x00ff) | (V << 8); break;
+	case 0x416F: irq_address = (irq_address & 0xff00) | (V); break;
+
 	// Window Mode
 	case 0x4170:
 		RNBWHackWindowXStartTile = V & 0x1f;
@@ -1105,7 +1134,7 @@ void RainbowFlashIDExit(uint8 chip)
 		if (!flash_id[chip])
 			return;
 		flash_id[chip] = 0;
-		SetReadHandler(0x6000, 0xFFFF, CartBR);
+		SetReadHandler(0x6000, 0xFFFF, RNBW_0x4800Rd);
 		break;
 	case CHIP_TYPE_CHR:
 		if (!flash_id[chip])
@@ -1556,6 +1585,10 @@ static void RainbowReset(void) {
 	C_IRQ_reset = false;
 	C_IRQ_ZPCM_ack = false;
 
+	// Vector redirection
+	nmi_redirection = false;
+	irq_redirection = false;
+
 	// Audio Output
 	audio_output = 1;
 
@@ -1577,7 +1610,7 @@ static void RainbowPower(void) {
 	else bootrom = 0;
 	RainbowReset();
 
-	SetReadHandler(0x4800, 0xFFFF, CartBR);
+	SetReadHandler(0x4800, 0xFFFF, RNBW_0x4800Rd);
 	SetWriteHandler(0x4800, 0x5FFF, CartBW);
 
 	/*
