@@ -113,15 +113,16 @@ private:
 		ESP_RESTART = 8,              // 0x08
 
 		// WIFI CMDS
-		WIFI_GET_STATUS = 9,  // 0x09
-		WIFI_GET_SSID = 10,   // 0x0A
-		WIFI_GET_IP = 11,     // 0x0B
-		WIFI_GET_CONFIG = 12, // 0x0C
-		WIFI_SET_CONFIG = 13, // 0x0D
+		WIFI_GET_STATUS = 9,       // 0x09
+		WIFI_GET_SSID = 10,        // 0x0A
+		WIFI_GET_IP_ADDRESS = 11,  // 0x0B
+		WIFI_GET_MAC_ADDRESS = 59, // 0x3B
+		WIFI_GET_CONFIG = 12,      // 0x0C
+		WIFI_SET_CONFIG = 13,      // 0x0D
 
 		// ACCESS POINT CMDS
-		AP_GET_SSID = 14, // 0x0E
-		AP_GET_IP = 15,   // 0x0F
+		AP_GET_SSID = 14,       // 0x0E
+		AP_GET_IP_ADDRESS = 15, // 0x0F
 
 		// RND CMDS
 		RND_GET_BYTE = 16,        // 0x10
@@ -181,44 +182,45 @@ private:
 	enum class fromesp_cmds_t : uint8_t
 	{
 		// ESP CMDS
-		READY,
-		DEBUG_LEVEL,
-		ESP_FIRMWARE_VERSION,
-		ESP_FACTORY_RESET,
+		READY = 0,                // 0x00
+		DEBUG_LEVEL = 1,          // 0x01
+		ESP_FIRMWARE_VERSION = 2, // 0x02
+		ESP_FACTORY_RESET = 3,    // 0x03
 
-		// WIFI / AP CMDS
-		WIFI_STATUS,
-		SSID,
-		IP_ADDRESS,
-		WIFI_CONFIG,
+		// WIFI/AP CMDS
+		WIFI_STATUS = 4,  // 0x04
+		SSID = 5,         // 0x05
+		IP_ADDRESS = 6,   // 0x06
+		MAC_ADDRESS = 28, // 0x1C
+		WIFI_CONFIG = 7,  // 0x07
 
 		// RND CMDS
-		RND_BYTE,
-		RND_WORD,
+		RND_BYTE = 8, // 0x08
+		RND_WORD = 9, // 0x09
 
 		// SERVER CMDS
-		SERVER_STATUS,
-		SERVER_PING,
-		SERVER_SETTINGS,
-		MESSAGE_FROM_SERVER,
+		SERVER_STATUS = 10,       // 0x0A
+		SERVER_PING = 11,         // 0x0B
+		SERVER_SETTINGS = 12,     // 0x0C
+		MESSAGE_FROM_SERVER = 13, // 0x0D
 
 		// NETWORK CMDS
-		NETWORK_SCAN_RESULT,
-		NETWORK_SCANNED_DETAILS,
-		NETWORK_REGISTERED_DETAILS,
-		NETWORK_REGISTERED,
+		NETWORK_SCAN_RESULT = 14,        // 0x0E
+		NETWORK_SCANNED_DETAILS = 15,    // 0x0F
+		NETWORK_REGISTERED_DETAILS = 16, // 0x10
+		NETWORK_REGISTERED = 17,         // 0x11
 
 		// FILE CMDS
-		FILE_STATUS,
-		FILE_EXISTS,
-		FILE_DELETE,
-		FILE_LIST,
-		FILE_DATA,
-		FILE_COUNT,
-		FILE_ID,
-		FILE_FS_INFO,
-		FILE_INFO,
-		FILE_DOWNLOAD,
+		FILE_STATUS = 18,   // 0x12
+		FILE_EXISTS = 19,   // 0x13
+		FILE_DELETE = 20,   // 0x14
+		FILE_LIST = 21,     // 0x15
+		FILE_DATA = 22,     // 0x16
+		FILE_COUNT = 23,    // 0x17
+		FILE_ID = 24,       // 0x18
+		FILE_FS_INFO = 25,  // 0x19
+		FILE_INFO = 26,     // 0x1A
+		FILE_DOWNLOAD = 27, // 0x1B
 	};
 
 	// ESP factory reset result codes
@@ -316,6 +318,8 @@ private:
 
 	void closeConnection();
 	void openConnection();
+
+	bool getIpMacAddresses(char* macAddr, char* ipAddr);
 
 	void pingRequest(uint8_t n);
 	void receivePingResult();

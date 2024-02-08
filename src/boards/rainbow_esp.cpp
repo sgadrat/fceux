@@ -13,10 +13,12 @@
 #define ERR_MSG_SIZE 513
 
 // UDP networking
-#pragma comment(lib, "ws2_32.lib") // Winsock Library
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
-#include <Ws2tcpip.h>
+#include <iphlpapi.h>
+#include <ws2tcpip.h>
+#pragma comment(lib,"ws2_32.lib")
+#pragma comment(lib, "IPHLPAPI.lib")
 
 // Compatibility hacks
 typedef SSIZE_T ssize_t;
@@ -303,29 +305,138 @@ void BrokeStudioFirmware::processBufferedMessage()
 		UDBG("[Rainbow] ESP received command WIFI_GET_STATUS\n");
 		this->tx_messages.push_back({3, static_cast<uint8_t>(fromesp_cmds_t::WIFI_STATUS), 3, 0}); // Simple answer, wifi is ok
 		break;
-		// WIFI_GET_SSID/WIFI_GET_IP config commands are not relevant here, so we'll just use fake data
+
+		// WIFI_GET_SSID command is not relevant here, so we'll just use fake data
 	case toesp_cmds_t::WIFI_GET_SSID:
 		UDBG("[Rainbow] ESP received command WIFI_GET_SSID\n");
 		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE)) == static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE))
 		{
-			this->tx_messages.push_back({15, static_cast<uint8_t>(fromesp_cmds_t::SSID), 13, 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', '_', 'S', 'S', 'I', 'D'});
+			this->tx_messages.push_back({ 15, static_cast<uint8_t>(fromesp_cmds_t::SSID), 13, 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', '_', 'S', 'S', 'I', 'D' });
 		}
 		else
 		{
-			this->tx_messages.push_back({2, static_cast<uint8_t>(fromesp_cmds_t::SSID), 0});
+			this->tx_messages.push_back({ 2, static_cast<uint8_t>(fromesp_cmds_t::SSID), 0 });
 		}
 		break;
-	case toesp_cmds_t::WIFI_GET_IP:
-		UDBG("[Rainbow] ESP received command WIFI_GET_IP\n");
-		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE)) == static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE))
+
+		// WIFI_GET_IP_ADDRESS command will just return machine IP address
+	case toesp_cmds_t::WIFI_GET_IP_ADDRESS:
+	{
+		UDBG("[Rainbow] ESP received command WIFI_GET_IP_ADDRESS\n");
+
+		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE)) != static_cast<uint8_t>(wifi_config_t::WIFI_ENABLE)) 
 		{
-			this->tx_messages.push_back({14, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 12, '1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1', '0'});
+			this->tx_messages.push_back({ 2, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 0 });
+			break;
 		}
-		else
+
+		uint8_t format = 0;
+		if (message_size == 2)
 		{
-			this->tx_messages.push_back({2, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 0});
+			format = this->rx_buffer.at(2);
+			if (format > 1)
+			{
+				format = 0;
+			}
+		}
+
+		char ipAddr[sizeof(sockaddr::sa_data)];
+		memset(ipAddr, 0, sizeof(sockaddr::sa_data));
+		bool res = this->getIpMacAddresses(NULL, ipAddr);
+
+		if (!res)
+		{
+			UDBG("[Rainbow] WIFI_GET_IP_ADDRESS: Error while retreiving ip address, sending fake one 192.168.1.1\n");
+			this->tx_messages.push_back({ 13, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 11, '1', '9', '2', '.', '1', '6', '8', '.', '1', '.', '1' });
+			break;
+		}
+
+		if (format == 0)
+		{
+			// string format
+			sprintf(
+				ipAddr,
+				"%d.%d.%d.%d",
+				static_cast<uint8_t>(ipAddr[2]),
+				static_cast<uint8_t>(ipAddr[3]),
+				static_cast<uint8_t>(ipAddr[4]),
+				static_cast<uint8_t>(ipAddr[5])
+			);
+			uint8_t len = static_cast<uint8_t>(strlen(ipAddr));
+			this->tx_messages.push_back({
+				static_cast<uint8_t>(2 + len),
+				static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS),
+				static_cast<uint8_t>(len)
+				});
+			for (size_t i = 0; i < len; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(ipAddr[i]) });
+			}
+		}
+		else if (format == 1)
+		{
+			// bytes format
+			this->tx_messages.push_back({ 1 + 4, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS) });
+			for (size_t i = 0; i < 4; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(ipAddr[i + 2]) });
+			}
 		}
 		break;
+	}
+	case toesp_cmds_t::WIFI_GET_MAC_ADDRESS:
+	{
+		UDBG("[Rainbow] ESP received command WIFI_GET_MAC_ADDRESS\n");
+
+		uint8_t format = 0;
+		if (message_size == 2) {
+			format = this->rx_buffer.at(2);
+			if (format > 1) {
+				format = 0;
+			}
+		}
+
+		char macAddr[18];
+		memset(macAddr, 0, sizeof(macAddr));
+		bool res = this->getIpMacAddresses(macAddr, NULL);
+
+		if (!res)
+		{
+			UDBG("[Rainbow] WIFI_GET_MAC_ADDRESS: Error while retreiving mac address, sending fake one FF:FF:FF:FF:FF:FF\n");
+			this->tx_messages.push_back({ 7, static_cast<uint8_t>(fromesp_cmds_t::MAC_ADDRESS), 255, 255, 255, 255, 255, 255 });
+			break;
+		}
+
+		if (format == 0)
+		{
+			// string format
+			sprintf(
+				macAddr,
+				"%2X:%2X:%2X:%2X:%2X:%2X",
+				static_cast<uint8_t>(macAddr[0]),
+				static_cast<uint8_t>(macAddr[1]),
+				static_cast<uint8_t>(macAddr[2]),
+				static_cast<uint8_t>(macAddr[3]),
+				static_cast<uint8_t>(macAddr[4]),
+				static_cast<uint8_t>(macAddr[5])
+			);
+			this->tx_messages.push_back({ 2 + 17, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 17 });
+			for (size_t i = 0; i < 17; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(macAddr[i]) });
+			}
+		}
+		else if (format == 1)
+		{
+			// bytes format
+			this->tx_messages.push_back({ 7, static_cast<uint8_t>(fromesp_cmds_t::MAC_ADDRESS) });
+			for (size_t i = 0; i < 6; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(macAddr[i]) });
+			}
+		}		
+		break;
+	}
 	case toesp_cmds_t::WIFI_GET_CONFIG:
 		UDBG("[Rainbow] ESP received command WIFI_GET_CONFIG\n");
 		this->tx_messages.push_back({2, static_cast<uint8_t>(fromesp_cmds_t::WIFI_CONFIG), this->wifi_config});
@@ -336,29 +447,87 @@ void BrokeStudioFirmware::processBufferedMessage()
 		break;
 
 		// AP CMDS
-		// AP_GET_SSID/AP_GET_IP config commands are not relevant here, so we'll just use fake data
+
+		// AP_GET_SSID command is not relevant here, so we'll just use fake data
 	case toesp_cmds_t::AP_GET_SSID:
 		UDBG("[Rainbow] ESP received command AP_GET_SSID\n");
 		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::AP_ENABLE)) == static_cast<uint8_t>(wifi_config_t::AP_ENABLE))
 		{
-			this->tx_messages.push_back({18, static_cast<uint8_t>(fromesp_cmds_t::SSID), 16, 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', '_', 'A', 'P', '_', 'S', 'S', 'I', 'D'});
+			this->tx_messages.push_back({ 18, static_cast<uint8_t>(fromesp_cmds_t::SSID), 16, 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', '_', 'A', 'P', '_', 'S', 'S', 'I', 'D' });
 		}
 		else
 		{
-			this->tx_messages.push_back({2, static_cast<uint8_t>(fromesp_cmds_t::SSID), 0});
+			this->tx_messages.push_back({ 2, static_cast<uint8_t>(fromesp_cmds_t::SSID), 0 });
 		}
 		break;
-	case toesp_cmds_t::AP_GET_IP:
-		UDBG("[Rainbow] ESP received command AP_GET_ID\n");
-		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::AP_ENABLE)) == static_cast<uint8_t>(wifi_config_t::AP_ENABLE))
+
+		// AP_GET_IP_ADDRESS command will just return machine IP address
+	case toesp_cmds_t::AP_GET_IP_ADDRESS:
+	{
+		UDBG("[Rainbow] ESP received command AP_GET_IP_ADDRESS\n");
+		if ((this->wifi_config & static_cast<uint8_t>(wifi_config_t::AP_ENABLE)) != static_cast<uint8_t>(wifi_config_t::AP_ENABLE))
 		{
-			this->tx_messages.push_back({16, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 14, '1', '2', '7', '.', '0', '.', '0', '.', '1', ':', '8', '0', '8', '0'});
+			this->tx_messages.push_back({ 2, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 0 });
+			break;
 		}
-		else
+
+		uint8_t format = 0;
+		if (message_size == 2)
 		{
-			this->tx_messages.push_back({2, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 0});
+			format = this->rx_buffer.at(2);
+			if (format > 1)
+			{
+				format = 0;
+			}
+		}
+
+		char ipAddr[sizeof(sockaddr::sa_data)];
+		memset(ipAddr, 0, sizeof(sockaddr::sa_data));
+		bool res = this->getIpMacAddresses(NULL, ipAddr);
+
+		if (!res)
+		{
+			UDBG("[Rainbow] AP_GET_IP_ADDRESS: Error while retreiving ip address, sending fake one 127.0.0.1\n");
+			this->tx_messages.push_back({ 11, static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS), 9, '1', '2', '7', '.', '0', '.', '0', '.', '1' });
+			break;
+		}
+
+		if (format == 0)
+		{
+			// string format
+			sprintf(
+				ipAddr,
+				"%d.%d.%d.%d\n",
+				static_cast<uint8_t>(ipAddr[2]),
+				static_cast<uint8_t>(ipAddr[3]),
+				static_cast<uint8_t>(ipAddr[4]),
+				static_cast<uint8_t>(ipAddr[5])
+			);
+			uint8_t len = static_cast<uint8_t>(strlen(ipAddr)) - 1;
+			this->tx_messages.push_back({
+				static_cast<uint8_t>(2 + len),
+				static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS),
+				static_cast<uint8_t>(len)
+				});
+			for (size_t i = 0; i < len; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(ipAddr[i]) });
+			}
+		}
+		else if (format == 1)
+		{
+			// bytes format
+			this->tx_messages.push_back({
+				static_cast<uint8_t>(1 + 4),
+				static_cast<uint8_t>(fromesp_cmds_t::IP_ADDRESS),
+				});
+			for (size_t i = 0; i < 4; i++)
+			{
+				this->tx_messages.push_back({ static_cast<uint8_t>(ipAddr[i + 2]) });
+			}
 		}
 		break;
+	}
 
 		// RND CMDS
 
@@ -1421,8 +1590,8 @@ void BrokeStudioFirmware::processBufferedMessage()
 				}
 				string const url(this->rx_buffer.begin() + 4, this->rx_buffer.begin() + 4 + urlLength);
 
-				uint8_t const path = this->rx_buffer.at(4 + urlLength);
-				uint8_t const file = this->rx_buffer.at(4 + 1 + urlLength);
+				uint8_t const path = this->rx_buffer.at(static_cast<uint8_t>(4 + urlLength));
+				uint8_t const file = this->rx_buffer.at(static_cast<uint8_t>(4 + 1 + urlLength));
 
 				// Delete existing file
 				if (path < NUM_FILE_PATHS && file < NUM_FILES)
@@ -2172,6 +2341,67 @@ void BrokeStudioFirmware::openConnection()
 		bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 		bind(this->udp_socket, reinterpret_cast<sockaddr *>(&bind_addr), sizeof(sockaddr));
 	}
+}
+
+
+bool BrokeStudioFirmware::getIpMacAddresses(char* macAddr, char* ipAddr)
+{
+#ifdef _WIN32
+	WSAData d;
+	if (WSAStartup(MAKEWORD(2, 2), &d) != 0) {
+		return false;
+	}
+
+	DWORD dwRetVal, outBufLen;
+	PIP_ADAPTER_ADDRESSES pAddresses = NULL;
+	PIP_ADAPTER_UNICAST_ADDRESS pUnicast = NULL;
+
+	// get buffer size needed
+	dwRetVal = GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &outBufLen);
+	if (dwRetVal != ERROR_BUFFER_OVERFLOW) {
+		return false;
+	}
+
+	// prepare buffer
+	pAddresses = (IP_ADAPTER_ADDRESSES*)malloc(outBufLen);
+	if (pAddresses == NULL) {
+		return false;
+	}
+
+	// get data
+	dwRetVal = GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, pAddresses, &outBufLen);
+	if (dwRetVal != NO_ERROR) {
+		free(pAddresses);
+		return false;
+	}
+
+	// we'll use only first result found
+
+	// get mac address
+	if (macAddr != NULL) {
+		for (size_t i = 0; i < 6; i++) {
+			macAddr[i] = static_cast<char>(pAddresses->PhysicalAddress[i]);
+		}
+	}
+
+	// get ip address
+	if (ipAddr != NULL) {
+		for (pUnicast = pAddresses->FirstUnicastAddress; pUnicast != NULL; pUnicast = pUnicast->Next) {
+			int family = pUnicast->Address.lpSockaddr->sa_family;
+			if (family == AF_INET) {
+				memcpy(ipAddr, pUnicast->Address.lpSockaddr->sa_data, sizeof(pUnicast->Address.lpSockaddr->sa_data));
+				break;
+			}
+		}
+	}
+
+	// free memory
+	free(pAddresses);
+
+	return true;
+#else
+	return false;
+#endif
 }
 
 void BrokeStudioFirmware::pingRequest(uint8_t n)
