@@ -303,7 +303,7 @@ void BrokeStudioFirmware::processBufferedMessage()
 
 	case toesp_cmds_t::WIFI_GET_STATUS:
 		UDBG("[Rainbow] ESP received command WIFI_GET_STATUS\n");
-		this->tx_messages.push_back({3, static_cast<uint8_t>(fromesp_cmds_t::WIFI_STATUS), 3, 0}); // Simple answer, wifi is ok
+		this->tx_messages.push_back({4, static_cast<uint8_t>(fromesp_cmds_t::WIFI_STATUS), 2, 0, 3}); // Simple answer, wifi is ok
 		break;
 
 		// WIFI_GET_SSID command is not relevant here, so we'll just use fake data
