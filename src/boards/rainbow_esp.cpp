@@ -77,6 +77,27 @@ BrokeStudioFirmware::BrokeStudioFirmware()
 {
 	UDBG("[Rainbow] BrokeStudioFirmware constructor\n");
 
+#ifdef _WIN32
+	// Initialize winsock
+	WSAData d;
+	int wsa_result = WSAStartup(MAKEWORD(2, 2), &d);
+	if(wsa_result != 0) {
+		string wsa_err = string("error code ") + std::to_string(wsa_result);
+		LPTSTR wsa_msg = NULL;
+		if (FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, wsa_result, 0, (LPTSTR)&wsa_msg, 0, NULL) > 0) {
+#ifdef UNICODE
+			std::wstring wmsg(wsa_msg);
+			wsa_err = string(wmsg.begin(), wmsg.end());
+#else
+			wsa_err = std::string(wsa_msg);
+#endif
+			if (!wsa_err.empty() && wsa_err.back() == '\n') wsa_err.pop_back();
+		}
+		LocalFree(wsa_msg);
+		UDBG("[Rainbow] Windows Sockets failure: " + wsa_err);
+	}
+#endif
+
 	// Get default host/port
 #ifdef _WIN32
 	char *value = nullptr;
@@ -2494,13 +2515,25 @@ std::pair<bool, sockaddr> BrokeStudioFirmware::resolve_address(string address, u
 	addrinfo hint;
 	memset((void *)&hint, 0, sizeof(hint));
 	hint.ai_family = AF_INET;
-	addrinfo *addrInfo;
+	addrinfo *addrInfo = NULL;
 	sockaddr sa;
 	memset(&sa, 0, sizeof(sa));
 
-	if (getaddrinfo(address.c_str(), std::to_string(port).c_str(), &hint, &addrInfo) != 0)
-	{
-		UDBG("[Rainbow] Unable to resolve server's hostname (%s:%s)\n", address.c_str(), std::to_string(port).c_str());
+	int getresult = getaddrinfo(address.c_str(), std::to_string(port).c_str(), &hint, &addrInfo);
+	if(getresult != 0) {
+#ifdef _WIN32
+
+#ifdef UNICODE
+		std::wstring gai_werror(gai_strerror(getresult));
+		string gai_error(gai_werror.begin(), gai_werror.end());
+#else
+		std::string gai_error(gai_strerror(getresult));
+#endif
+
+#else
+		string gai_error(gai_strerror(getresult));
+#endif
+		UDBG("[Rainbow] Unable to resolve server's hostname (" + address + ":" + std::to_string(port) + ") error: " + gai_error);
 	}
 	else
 	{
