@@ -143,12 +143,13 @@ else(WIN32)
 	  add_definitions( -D_USE_X264 ${X264_CFLAGS} )
   endif()
 
-  pkg_check_modules( X265 x265)
-
-  if ( ${X265_FOUND} )
-	  message( STATUS "Using System X265 Encoder Library ${X265_VERSION}" )
-	  add_definitions( -D_USE_X265 ${X265_CFLAGS} )
-  endif()
+  #FIXME libx265 4.0 broke API of x265_encoder_encode(): code should be fixed to accept libx265 3.x and 4.x
+  #pkg_check_modules( X265 x265)
+  #
+  #if ( ${X265_FOUND} )
+  #    message( STATUS "Using System X265 Encoder Library ${X265_VERSION}" )
+  #    add_definitions( -D_USE_X265 ${X265_CFLAGS} )
+  #endif()
 
   pkg_check_modules( LIBAV  libavcodec  libavformat  libavutil  libswresample  libswscale)
 
