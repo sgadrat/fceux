@@ -2533,7 +2533,7 @@ std::pair<bool, sockaddr> BrokeStudioFirmware::resolve_address(string address, u
 #else
 		string gai_error(gai_strerror(getresult));
 #endif
-		UDBG("[Rainbow] Unable to resolve server's hostname (" + address + ":" + std::to_string(port) + ") error: " + gai_error);
+		UDBG(("[Rainbow] Unable to resolve server's hostname (" + address + ":" + std::to_string(port) + ") error: " + gai_error + "\n").c_str());
 	}
 	else
 	{
